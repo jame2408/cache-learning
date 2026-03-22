@@ -1,0 +1,455 @@
+<!DOCTYPE html>
+<html lang="zh-TW">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Cache Koans — 快取分區（分片）</title>
+  <link rel="stylesheet" href="../css/shared.css">
+  <script src="../js/i18n.js"></script>
+</head>
+<body>
+
+<!-- Mobile Gate -->
+<div class="mobile-gate">
+  <div class="gate-icon">&#9776;</div>
+  <div class="gate-text" data-i18n="mobile-gate">
+    此學習路徑需要更寬的視窗。請在較大的螢幕上開啟。
+  </div>
+</div>
+
+<div class="koan-page">
+  <div class="koan-number" data-i18n="k20-number">Koan 20</div>
+  <h1 class="koan-title" data-i18n="k20-title">快取分區（分片）</h1>
+  <p class="koan-zen" data-i18n="k20-zen">一個快取放不下所有。把它分成碎片——但每片必須知道自己的責任。</p>
+
+  <div class="koan-section-title" data-i18n="k20-section-concept">概念</div>
+  <p class="koan-text" data-i18n="k20-text1">當快取資料量超過單一節點的容量時，需要將資料分散到多個節點。這就是分區 (Partitioning) 或分片 (Sharding)。</p>
+  <p class="koan-text" data-i18n="k20-text2">簡單的 modulo 雜湊 (key % N) 在節點數量變化時會導致大量 key 重新映射。一致性雜湊 (Consistent Hashing) 將節點和 key 都映射到環上，節點變化時只影響相鄰區間的 key。</p>
+
+  <div class="koan-section-title" data-i18n="k20-section-interactive">互動模擬</div>
+  <p class="koan-text" data-i18n="k20-text-interactive">觀察一致性雜湊環。新增或移除節點，看哪些 key 需要重新映射。與 modulo 雜湊比較。</p>
+
+  <div class="koan-interactive">
+    <div style="display:flex;gap:1rem;margin-bottom:1.5rem;flex-wrap:wrap;">
+      <button class="action-btn" id="btn-mode-consistent" style="border-color:var(--accent-blue);color:var(--accent-blue);" data-i18n="k20-btn-consistent">一致性雜湊</button>
+      <button class="action-btn" id="btn-mode-modulo" data-i18n="k20-btn-modulo">Modulo 雜湊</button>
+    </div>
+
+    <div style="display:flex;gap:2rem;flex-wrap:wrap;align-items:flex-start;">
+      <!-- Hash Ring -->
+      <div style="flex:0 0 auto;">
+        <div class="hash-ring" id="hash-ring-container">
+          <svg viewBox="0 0 280 280" xmlns="http://www.w3.org/2000/svg" id="ring-svg" width="280" height="280">
+            <circle class="hash-ring-circle" cx="140" cy="140" r="110"/>
+            <!-- Nodes and keys will be rendered by JS -->
+          </svg>
+        </div>
+      </div>
+
+      <!-- Info Panel -->
+      <div style="flex:1;min-width:250px;">
+        <div style="font-size:0.75rem;color:var(--text-dim);text-transform:uppercase;letter-spacing:1px;margin-bottom:0.5rem;" data-i18n="k20-label-nodes">節點</div>
+        <div id="node-list" style="margin-bottom:1rem;"></div>
+
+        <div style="font-size:0.75rem;color:var(--text-dim);text-transform:uppercase;letter-spacing:1px;margin-bottom:0.5rem;" data-i18n="k20-label-keys">Key 分布</div>
+        <div id="key-distribution" style="margin-bottom:1rem;"></div>
+
+        <div style="display:flex;gap:0.5rem;flex-wrap:wrap;">
+          <button class="action-btn" id="btn-add-node" style="font-size:0.75rem;" data-i18n="k20-btn-add-node">新增節點</button>
+          <button class="action-btn" id="btn-remove-node" style="font-size:0.75rem;" data-i18n="k20-btn-remove-node">移除節點</button>
+          <button class="action-btn" id="btn-reset" style="font-size:0.75rem;" data-i18n="k20-btn-reset">重置</button>
+        </div>
+      </div>
+    </div>
+
+    <div class="stats-row" style="margin-top:1.5rem;">
+      <div class="stat-item">
+        <div class="stat-value blue" id="stat-nodes">3</div>
+        <div class="stat-label" data-i18n="k20-stat-nodes">節點數</div>
+      </div>
+      <div class="stat-item">
+        <div class="stat-value" id="stat-keys" style="color:var(--text-primary);">8</div>
+        <div class="stat-label" data-i18n="k20-stat-keys">Key 數</div>
+      </div>
+      <div class="stat-item">
+        <div class="stat-value orange" id="stat-remapped">0</div>
+        <div class="stat-label" data-i18n="k20-stat-remapped">重新映射的 Key</div>
+      </div>
+      <div class="stat-item">
+        <div class="stat-value" id="stat-pct" style="color:var(--accent-green);">0%</div>
+        <div class="stat-label" data-i18n="k20-stat-pct">重映射比例</div>
+      </div>
+    </div>
+
+    <div id="comparison-note" class="hidden" style="margin-top:1rem;padding:0.75rem 1rem;border-radius:var(--radius-sm);background:rgba(248,81,73,0.06);border:1px solid rgba(248,81,73,0.15);font-size:0.8rem;color:var(--accent-red);">
+      <span data-i18n="k20-modulo-warning">Modulo 雜湊：節點變化時，幾乎所有 key 都需要重新映射！</span>
+    </div>
+  </div>
+
+  <div class="koan-section-title" data-i18n="k20-section-question">思考</div>
+  <div class="question-group visible" id="q1">
+    <div class="question-label" data-i18n="k20-q1">為什麼一致性雜湊比 modulo 雜湊更受青睞？</div>
+    <div class="question-options">
+      <div class="question-option" data-answer="correct" data-i18n="k20-q1-a1">節點變化時，key 的重新分配量最少</div>
+      <div class="question-option" data-answer="incorrect" data-i18n="k20-q1-a2">速度更快</div>
+      <div class="question-option" data-answer="incorrect" data-i18n="k20-q1-a3">實作更簡單</div>
+    </div>
+    <div class="question-feedback" id="q1-feedback"></div>
+  </div>
+
+  <div class="k20-insight">
+    <div class="insight-box" id="insight-box">
+      <div class="insight-label" data-i18n="k20-insight-label">洞察</div>
+      <div class="insight-text" data-i18n-html="k20-insight-text">
+        <code>虛擬節點 (vnodes)</code> 能改善雜湊環上的負載分布。每個實體節點在環上放置多個虛擬點，讓 key 的分布更均勻。<br><br>
+        DynamoDB、Cassandra 和大多數分散式快取都使用這項技術。Redis Cluster 使用 16384 個雜湊槽 (hash slots)，也是類似的概念。<br><br>
+        當你看到 key 分布不均，考慮增加虛擬節點的數量。
+      </div>
+    </div>
+  </div>
+</div>
+
+<script src="../js/progress.js"></script>
+<script src="../js/scroll.js"></script>
+<script>
+(function () {
+  'use strict';
+
+  var RING_CX = 140, RING_CY = 140, RING_R = 110;
+  var nodeColors = ['#58a6ff', '#3fb950', '#d29922', '#f85149', '#bc8cff', '#56d4dd'];
+  var nodeNames = ['Node-A', 'Node-B', 'Node-C', 'Node-D', 'Node-E', 'Node-F'];
+  var keyNames = ['user:1', 'user:2', 'product:A', 'session:X', 'config:db', 'order:99', 'token:Z', 'page:home'];
+
+  var mode = 'consistent'; // 'consistent' or 'modulo'
+  var nodes = [];
+  var keys = [];
+  var prevMapping = {};
+  var remappedCount = 0;
+
+  // Simple hash function
+  function simpleHash(str) {
+    var hash = 0;
+    for (var i = 0; i < str.length; i++) {
+      hash = ((hash << 5) - hash) + str.charCodeAt(i);
+      hash = hash & 0x7FFFFFFF;
+    }
+    return hash;
+  }
+
+  function initNodes() {
+    nodes = [];
+    for (var i = 0; i < 3; i++) {
+      nodes.push({
+        name: nodeNames[i],
+        color: nodeColors[i],
+        position: simpleHash(nodeNames[i]) % 360
+      });
+    }
+    // Spread nodes more evenly for visual clarity
+    nodes[0].position = 30;
+    nodes[1].position = 150;
+    nodes[2].position = 270;
+  }
+
+  function initKeys() {
+    keys = [];
+    keyNames.forEach(function(name) {
+      keys.push({
+        name: name,
+        position: simpleHash(name) % 360
+      });
+    });
+  }
+
+  function getNodeForKey(keyPos) {
+    if (nodes.length === 0) return null;
+
+    if (mode === 'modulo') {
+      var idx = simpleHash(keys.find(function(k) { return k.position === keyPos; }).name) % nodes.length;
+      return nodes[idx];
+    }
+
+    // Consistent hashing: find next node clockwise
+    var sorted = nodes.slice().sort(function(a, b) { return a.position - b.position; });
+    for (var i = 0; i < sorted.length; i++) {
+      if (sorted[i].position >= keyPos) return sorted[i];
+    }
+    return sorted[0]; // wrap around
+  }
+
+  function getMapping() {
+    var mapping = {};
+    keys.forEach(function(key) {
+      var node = getNodeForKey(key.position);
+      mapping[key.name] = node ? node.name : null;
+    });
+    return mapping;
+  }
+
+  function posToXY(angleDeg) {
+    var rad = (angleDeg - 90) * Math.PI / 180;
+    return {
+      x: RING_CX + RING_R * Math.cos(rad),
+      y: RING_CY + RING_R * Math.sin(rad)
+    };
+  }
+
+  function render() {
+    var svg = document.getElementById('ring-svg');
+    // Clear everything except the ring circle
+    var circle = svg.querySelector('.hash-ring-circle');
+    svg.innerHTML = '';
+    svg.appendChild(circle);
+
+    // Draw arcs for node ranges
+    if (mode === 'consistent' && nodes.length > 0) {
+      var sorted = nodes.slice().sort(function(a, b) { return a.position - b.position; });
+      sorted.forEach(function(node, i) {
+        var startAngle = i === 0 ? sorted[sorted.length - 1].position : sorted[i - 1].position;
+        var endAngle = node.position;
+        // Draw a small arc indicator near the node
+        var arcPath = document.createElementNS('http://www.w3.org/2000/svg', 'circle');
+        arcPath.setAttribute('cx', RING_CX);
+        arcPath.setAttribute('cy', RING_CY);
+        arcPath.setAttribute('r', RING_R);
+        arcPath.setAttribute('fill', 'none');
+        arcPath.setAttribute('stroke', node.color);
+        arcPath.setAttribute('stroke-width', '3');
+        arcPath.setAttribute('opacity', '0.15');
+
+        var circumference = 2 * Math.PI * RING_R;
+        var rangeDeg = endAngle - startAngle;
+        if (rangeDeg <= 0) rangeDeg += 360;
+        var dashLen = (rangeDeg / 360) * circumference;
+        var offset = -(((startAngle - 90) / 360) * circumference);
+
+        arcPath.setAttribute('stroke-dasharray', dashLen + ' ' + (circumference - dashLen));
+        arcPath.setAttribute('stroke-dashoffset', offset);
+        svg.appendChild(arcPath);
+      });
+    }
+
+    // Draw keys
+    keys.forEach(function(key) {
+      var pos = posToXY(key.position);
+      var node = getNodeForKey(key.position);
+      var color = node ? node.color : '#6a7280';
+
+      var keyDot = document.createElementNS('http://www.w3.org/2000/svg', 'circle');
+      keyDot.setAttribute('cx', pos.x);
+      keyDot.setAttribute('cy', pos.y);
+      keyDot.setAttribute('r', '4');
+      keyDot.setAttribute('fill', color);
+      keyDot.setAttribute('opacity', '0.8');
+      svg.appendChild(keyDot);
+
+      var label = document.createElementNS('http://www.w3.org/2000/svg', 'text');
+      var labelPos = posToXY(key.position);
+      var offsetR = 18;
+      var rad = (key.position - 90) * Math.PI / 180;
+      label.setAttribute('x', labelPos.x + offsetR * Math.cos(rad));
+      label.setAttribute('y', labelPos.y + offsetR * Math.sin(rad));
+      label.setAttribute('text-anchor', 'middle');
+      label.setAttribute('font-family', 'var(--font-mono)');
+      label.setAttribute('font-size', '7');
+      label.setAttribute('fill', color);
+      label.textContent = key.name;
+      svg.appendChild(label);
+    });
+
+    // Draw nodes (larger)
+    nodes.forEach(function(node) {
+      var pos = posToXY(node.position);
+      var g = document.createElementNS('http://www.w3.org/2000/svg', 'g');
+      g.setAttribute('class', 'hash-ring-node');
+
+      var dot = document.createElementNS('http://www.w3.org/2000/svg', 'circle');
+      dot.setAttribute('cx', pos.x);
+      dot.setAttribute('cy', pos.y);
+      dot.setAttribute('r', '8');
+      dot.setAttribute('fill', node.color);
+      dot.setAttribute('stroke', '#0a0e14');
+      dot.setAttribute('stroke-width', '2');
+      g.appendChild(dot);
+
+      var label = document.createElementNS('http://www.w3.org/2000/svg', 'text');
+      var rad = (node.position - 90) * Math.PI / 180;
+      label.setAttribute('x', pos.x + 22 * Math.cos(rad));
+      label.setAttribute('y', pos.y + 22 * Math.sin(rad));
+      label.setAttribute('text-anchor', 'middle');
+      label.setAttribute('font-family', 'var(--font-mono)');
+      label.setAttribute('font-size', '9');
+      label.setAttribute('font-weight', '600');
+      label.setAttribute('fill', node.color);
+      label.textContent = node.name;
+      g.appendChild(label);
+
+      svg.appendChild(g);
+    });
+
+    // Update node list
+    var nodeListEl = document.getElementById('node-list');
+    nodeListEl.innerHTML = '';
+    nodes.forEach(function(node) {
+      var div = document.createElement('div');
+      div.style.cssText = 'display:inline-flex;align-items:center;gap:0.3rem;margin-right:1rem;margin-bottom:0.3rem;font-size:0.8rem;';
+      div.innerHTML = '<span style="width:10px;height:10px;border-radius:50%;background:' + node.color + ';display:inline-block;"></span>' + node.name;
+      nodeListEl.appendChild(div);
+    });
+
+    // Update key distribution
+    var keyDistEl = document.getElementById('key-distribution');
+    keyDistEl.innerHTML = '';
+    var mapping = getMapping();
+    var buckets = {};
+    nodes.forEach(function(n) { buckets[n.name] = []; });
+    keys.forEach(function(key) {
+      var target = mapping[key.name];
+      if (target && buckets[target]) buckets[target].push(key.name);
+    });
+    nodes.forEach(function(node) {
+      var div = document.createElement('div');
+      div.style.cssText = 'font-size:0.75rem;margin-bottom:0.3rem;color:var(--text-secondary);';
+      div.innerHTML = '<span style="color:' + node.color + ';font-weight:600;">' + node.name + '</span>: ' +
+        (buckets[node.name].length > 0 ? buckets[node.name].join(', ') : '\u2014') +
+        ' <span style="color:var(--text-dim);">(' + buckets[node.name].length + ')</span>';
+      keyDistEl.appendChild(div);
+    });
+
+    // Update stats
+    document.getElementById('stat-nodes').textContent = nodes.length;
+    document.getElementById('stat-keys').textContent = keys.length;
+    document.getElementById('stat-remapped').textContent = remappedCount;
+    var pct = keys.length > 0 ? Math.round(remappedCount / keys.length * 100) : 0;
+    document.getElementById('stat-pct').textContent = pct + '%';
+    document.getElementById('stat-pct').style.color = pct > 50 ? 'var(--accent-red)' : (pct > 0 ? 'var(--accent-orange)' : 'var(--accent-green)');
+
+    // Comparison note for modulo
+    var note = document.getElementById('comparison-note');
+    if (mode === 'modulo' && remappedCount > keys.length * 0.5) {
+      note.classList.remove('hidden');
+    } else {
+      note.classList.add('hidden');
+    }
+  }
+
+  function countRemapped(oldMapping, newMapping) {
+    var count = 0;
+    for (var key in newMapping) {
+      if (oldMapping[key] && oldMapping[key] !== newMapping[key]) {
+        count++;
+      }
+    }
+    return count;
+  }
+
+  // Mode switching
+  document.getElementById('btn-mode-consistent').addEventListener('click', function() {
+    mode = 'consistent';
+    this.style.borderColor = 'var(--accent-blue)';
+    this.style.color = 'var(--accent-blue)';
+    document.getElementById('btn-mode-modulo').style.borderColor = '';
+    document.getElementById('btn-mode-modulo').style.color = '';
+    prevMapping = getMapping();
+    remappedCount = 0;
+    render();
+  });
+
+  document.getElementById('btn-mode-modulo').addEventListener('click', function() {
+    mode = 'modulo';
+    this.style.borderColor = 'var(--accent-blue)';
+    this.style.color = 'var(--accent-blue)';
+    document.getElementById('btn-mode-consistent').style.borderColor = '';
+    document.getElementById('btn-mode-consistent').style.color = '';
+    prevMapping = getMapping();
+    remappedCount = 0;
+    render();
+  });
+
+  // Add node
+  document.getElementById('btn-add-node').addEventListener('click', function() {
+    if (nodes.length >= 6) return;
+    var oldMapping = getMapping();
+    var idx = nodes.length;
+    var pos = (idx * 60 + 15) % 360;
+    // Find an open position
+    var positions = nodes.map(function(n) { return n.position; });
+    while (positions.indexOf(pos) !== -1) pos = (pos + 30) % 360;
+
+    nodes.push({
+      name: nodeNames[idx],
+      color: nodeColors[idx],
+      position: pos
+    });
+
+    var newMapping = getMapping();
+    remappedCount = countRemapped(oldMapping, newMapping);
+    prevMapping = newMapping;
+    render();
+  });
+
+  // Remove node
+  document.getElementById('btn-remove-node').addEventListener('click', function() {
+    if (nodes.length <= 1) return;
+    var oldMapping = getMapping();
+    nodes.pop();
+    var newMapping = getMapping();
+    remappedCount = countRemapped(oldMapping, newMapping);
+    prevMapping = newMapping;
+    render();
+  });
+
+  // Reset
+  document.getElementById('btn-reset').addEventListener('click', function() {
+    mode = 'consistent';
+    document.getElementById('btn-mode-consistent').style.borderColor = 'var(--accent-blue)';
+    document.getElementById('btn-mode-consistent').style.color = 'var(--accent-blue)';
+    document.getElementById('btn-mode-modulo').style.borderColor = '';
+    document.getElementById('btn-mode-modulo').style.color = '';
+    remappedCount = 0;
+    initNodes();
+    initKeys();
+    prevMapping = getMapping();
+    render();
+  });
+
+  // Init
+  initNodes();
+  initKeys();
+  prevMapping = getMapping();
+  render();
+
+  // --- Question Logic ---
+  var q1 = document.getElementById('q1');
+  var q1Feedback = document.getElementById('q1-feedback');
+  var insightBox = document.querySelector('.k20-insight');
+  var q1Answered = false;
+
+  q1.querySelectorAll('.question-option').forEach(function(opt) {
+    opt.addEventListener('click', function() {
+      if (q1Answered) return;
+      var isCorrect = opt.getAttribute('data-answer') === 'correct';
+      if (isCorrect) {
+        q1Answered = true;
+        opt.classList.add('correct');
+        q1Feedback.textContent = '\u2713 \u6b63\u78ba\uff01\u4e00\u81f4\u6027\u96dc\u6e4a\u5728\u7bc0\u9ede\u8b8a\u5316\u6642\u53ea\u91cd\u65b0\u5206\u914d\u5c11\u91cf key\u3002';
+        q1Feedback.classList.add('visible', 'correct');
+        q1.querySelectorAll('.question-option').forEach(function(o) {
+          if (o !== opt) o.classList.add('disabled');
+        });
+        setTimeout(function() { insightBox.classList.add('visible'); }, 600);
+      } else {
+        opt.classList.add('incorrect');
+        q1Feedback.textContent = '\u2717 \u518d\u60f3\u60f3\u2014\u2014\u60f3\u60f3\u7bc0\u9ede\u589e\u6e1b\u6642\u6703\u767c\u751f\u4ec0\u9ebc\u3002';
+        q1Feedback.classList.add('visible', 'incorrect');
+        setTimeout(function() {
+          q1Feedback.classList.remove('visible');
+          setTimeout(function() { q1Feedback.classList.remove('incorrect'); }, 300);
+        }, 2000);
+      }
+    });
+  });
+})();
+</script>
+</body>
+</html>

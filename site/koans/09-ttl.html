@@ -1,0 +1,257 @@
+<!DOCTYPE html>
+<html lang="zh-TW">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Cache Koans — Time-To-Live (TTL)</title>
+  <link rel="stylesheet" href="../css/shared.css">
+  <script src="../js/i18n.js"></script>
+</head>
+<body>
+
+<!-- Mobile Gate -->
+<div class="mobile-gate">
+  <div class="gate-icon">&#9776;</div>
+  <div class="gate-text" data-i18n="mobile-gate">
+    此學習路徑需要更寬的視窗。請在較大的螢幕上開啟。
+  </div>
+</div>
+
+<div class="koan-page">
+
+  <div class="koan-number" data-i18n="k09-number">Koan 09</div>
+  <h1 class="koan-title" data-i18n="k09-title">Time-To-Live (TTL)</h1>
+  <p class="koan-zen" data-i18n="k09-zen">萬物皆有其時。快取中的資料也不例外。</p>
+
+  <h2 class="koan-section-title" data-i18n="k09-section-concept">概念</h2>
+  <p class="koan-text" data-i18n="k09-text">
+    TTL（Time-To-Live）定義了快取中資料的有效期限。一旦 TTL 過期，資料就會被驅逐或刷新。TTL 太短，快取形同虛設，不斷 cache miss；TTL 太長，使用者看到過時的資料。找到平衡點是一門藝術。
+  </p>
+
+  <h2 class="koan-section-title" data-i18n="k09-section-sim">TTL 模擬</h2>
+  <p class="koan-text" data-i18n="k09-text-sim">調整 TTL 滑桿，然後點擊「新增快取項目」觀察它們的倒數計時。項目過期後會自動消失並觸發 cache miss。</p>
+
+  <div class="koan-interactive">
+    <div class="slider-group">
+      <div class="slider-label">
+        <span data-i18n="k09-slider-label">TTL 設定</span>
+        <span id="ttl-value">5s</span>
+      </div>
+      <input type="range" id="ttl-slider" min="2" max="15" value="5" step="1">
+    </div>
+
+    <div style="display:flex; gap:1rem; align-items:center; flex-wrap:wrap; margin:1rem 0;">
+      <button class="action-btn" id="ttl-add-btn" data-i18n="k09-btn-add">&#43; 新增快取項目</button>
+      <button class="action-btn" id="ttl-burst-btn" data-i18n="k09-btn-burst">&#9889; 批次新增 5 個</button>
+    </div>
+
+    <div id="ttl-items-container" style="display:flex; flex-wrap:wrap; gap:0.75rem; min-height:80px; margin:1rem 0;"></div>
+
+    <div style="margin-top:1rem;">
+      <div style="font-size:0.8rem;color:var(--text-dim);margin-bottom:0.5rem;" data-i18n="k09-freshness">Cache Freshness</div>
+      <div class="load-meter">
+        <div class="load-meter-fill" id="ttl-freshness-bar" style="width:100%;"></div>
+      </div>
+    </div>
+
+    <div class="stats-row" style="margin-top:1rem;">
+      <div class="stat-item">
+        <div class="stat-value blue" id="ttl-active">0</div>
+        <div class="stat-label" data-i18n="k09-stat-active">Active Items</div>
+      </div>
+      <div class="stat-item">
+        <div class="stat-value green" id="ttl-hits">0</div>
+        <div class="stat-label" data-i18n="k09-stat-hits">Cache Hits</div>
+      </div>
+      <div class="stat-item">
+        <div class="stat-value red" id="ttl-expired">0</div>
+        <div class="stat-label" data-i18n="k09-stat-expired">Expired (Miss)</div>
+      </div>
+      <div class="stat-item">
+        <div class="stat-value orange" id="ttl-ratio">—</div>
+        <div class="stat-label" data-i18n="k09-stat-ratio">Hit Ratio</div>
+      </div>
+    </div>
+  </div>
+
+  <h2 class="koan-section-title" data-i18n="k09-section-question">思考</h2>
+  <div class="question-group visible" id="ttl-q1">
+    <div class="question-label" data-i18n="k09-q1">TTL 設定太短會發生什麼？</div>
+    <div class="question-options">
+      <div class="question-option" data-correct="true" data-i18n="k09-q1-a1">過多的 cache miss，快取失去意義</div>
+      <div class="question-option" data-i18n="k09-q1-a2">資料變得過時（stale）</div>
+      <div class="question-option" data-i18n="k09-q1-a3">記憶體溢出</div>
+    </div>
+    <div class="question-feedback" id="ttl-q1-feedback"></div>
+  </div>
+
+  <div class="k09-insight">
+    <div class="insight-box">
+      <div class="insight-label" data-i18n="k09-insight-label">Insight</div>
+      <div class="insight-text" data-i18n-html="k09-insight-text">
+        TTL 太短 = 快取沒有好處，TTL 太長 = 過時的資料。找到最佳平衡點的藝術取決於你的資料變更頻率。<br><br>
+        常見做法：靜態資源用長 TTL（天/週），使用者資料用中等 TTL（分鐘/小時），即時資料用短 TTL 或不快取。<br><br>
+        <code>最佳 TTL ≈ 可接受的過時時間</code>
+      </div>
+    </div>
+  </div>
+
+</div>
+
+<script src="../js/progress.js"></script>
+<script src="../js/scroll.js"></script>
+<script>
+(function () {
+  'use strict';
+
+  let itemId = 0;
+  let activeItems = [];
+  let hitCount = 0;
+  let expiredCount = 0;
+  let tickInterval = null;
+
+  const container = document.getElementById('ttl-items-container');
+  const slider = document.getElementById('ttl-slider');
+  const ttlValueEl = document.getElementById('ttl-value');
+
+  slider.addEventListener('input', function () {
+    ttlValueEl.textContent = this.value + 's';
+  });
+
+  function createItem() {
+    const ttl = parseInt(slider.value);
+    itemId++;
+    hitCount++;
+    const item = {
+      id: itemId,
+      ttl: ttl,
+      remaining: ttl,
+      el: null
+    };
+
+    const el = document.createElement('div');
+    el.style.cssText = 'background:var(--bg-glass);border:1px solid rgba(63,185,80,0.3);border-radius:var(--radius-sm);padding:0.5rem 0.8rem;font-size:0.8rem;color:var(--accent-green);font-family:var(--font-mono);transition:all 0.3s ease;min-width:100px;text-align:center;';
+    el.innerHTML = '<div style="font-size:0.7rem;color:var(--text-dim);">item_' + itemId + '</div><div class="ttl-countdown" style="font-size:1.1rem;font-weight:600;">' + ttl + 's</div>';
+    container.appendChild(el);
+    item.el = el;
+    activeItems.push(item);
+    updateStats();
+
+    if (!tickInterval) {
+      tickInterval = setInterval(tick, 1000);
+    }
+  }
+
+  function tick() {
+    const toRemove = [];
+    activeItems.forEach(item => {
+      item.remaining--;
+      const countdown = item.el.querySelector('.ttl-countdown');
+
+      if (item.remaining <= 0) {
+        // Expired
+        item.el.style.borderColor = 'rgba(248,81,73,0.5)';
+        item.el.style.color = '#f85149';
+        countdown.textContent = 'EXPIRED';
+        toRemove.push(item);
+        expiredCount++;
+      } else if (item.remaining <= 2) {
+        item.el.style.borderColor = 'rgba(248,81,73,0.3)';
+        item.el.style.color = '#f85149';
+        countdown.textContent = item.remaining + 's';
+        item.el.style.animation = 'countdown-pulse 0.5s ease-in-out';
+      } else if (item.remaining <= item.ttl * 0.4) {
+        item.el.style.borderColor = 'rgba(210,153,34,0.3)';
+        item.el.style.color = '#d29922';
+        countdown.textContent = item.remaining + 's';
+      } else {
+        countdown.textContent = item.remaining + 's';
+      }
+    });
+
+    // Remove expired after brief delay
+    if (toRemove.length > 0) {
+      setTimeout(() => {
+        toRemove.forEach(item => {
+          item.el.style.opacity = '0';
+          item.el.style.transform = 'scale(0.8)';
+          setTimeout(() => {
+            if (item.el.parentNode) item.el.parentNode.removeChild(item.el);
+          }, 300);
+          const idx = activeItems.indexOf(item);
+          if (idx > -1) activeItems.splice(idx, 1);
+        });
+        updateStats();
+      }, 500);
+    }
+
+    updateStats();
+
+    if (activeItems.length === 0) {
+      clearInterval(tickInterval);
+      tickInterval = null;
+    }
+  }
+
+  function updateStats() {
+    document.getElementById('ttl-active').textContent = activeItems.length;
+    document.getElementById('ttl-hits').textContent = hitCount;
+    document.getElementById('ttl-expired').textContent = expiredCount;
+
+    const total = hitCount + expiredCount;
+    if (total > 0 && hitCount > 0) {
+      const ratio = Math.round((hitCount / (hitCount + expiredCount)) * 100);
+      document.getElementById('ttl-ratio').textContent = ratio + '%';
+    }
+
+    // Freshness bar
+    const bar = document.getElementById('ttl-freshness-bar');
+    if (activeItems.length === 0) {
+      bar.style.width = '0%';
+      bar.className = 'load-meter-fill';
+      return;
+    }
+    const avgFresh = activeItems.reduce((sum, item) => sum + (item.remaining / item.ttl), 0) / activeItems.length;
+    const pct = Math.round(avgFresh * 100);
+    bar.style.width = pct + '%';
+    bar.className = 'load-meter-fill' + (pct < 25 ? ' danger' : pct < 50 ? ' warning' : '');
+  }
+
+  document.getElementById('ttl-add-btn').addEventListener('click', createItem);
+
+  document.getElementById('ttl-burst-btn').addEventListener('click', function () {
+    for (let i = 0; i < 5; i++) {
+      setTimeout(createItem, i * 150);
+    }
+  });
+
+  // --- Questions ---
+  document.querySelectorAll('#ttl-q1 .question-option').forEach(opt => {
+    opt.addEventListener('click', function () {
+      if (this.classList.contains('correct') || this.classList.contains('incorrect')) return;
+      const isCorrect = this.dataset.correct === 'true';
+      const feedback = document.getElementById('ttl-q1-feedback');
+
+      document.querySelectorAll('#ttl-q1 .question-option').forEach(o => {
+        if (o.dataset.correct === 'true') o.classList.add('correct');
+        else o.classList.add('disabled');
+      });
+
+      if (isCorrect) {
+        feedback.textContent = '\u2713 \u6b63\u78ba\uff01TTL \u592a\u77ed\u6703\u5c0e\u81f4\u983b\u7e41\u7684 cache miss\uff0c\u5feb\u53d6\u5f62\u540c\u865b\u8a2d\u3002';
+        feedback.className = 'question-feedback visible correct';
+      } else {
+        this.classList.add('incorrect');
+        feedback.textContent = '\u2717 \u518d\u60f3\u60f3\u2014\u2014TTL \u592a\u77ed\u7684\u554f\u984c\u662f\u8cc7\u6599\u904e\u65e9\u904e\u671f\uff0c\u4e0d\u662f\u904e\u6642\u6216\u8a18\u61b6\u9ad4\u554f\u984c\u3002';
+        feedback.className = 'question-feedback visible incorrect';
+      }
+
+      setTimeout(() => {
+        document.querySelector('.k09-insight').classList.add('visible');
+      }, 600);
+    });
+  });
+})();
+</script>
+</body>
+</html>

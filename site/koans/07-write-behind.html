@@ -1,0 +1,277 @@
+<!DOCTYPE html>
+<html lang="zh-TW">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Cache Koans — Write-Behind (Write-Back) Cache</title>
+  <link rel="stylesheet" href="../css/shared.css">
+  <script src="../js/i18n.js"></script>
+</head>
+<body>
+
+<!-- Mobile Gate -->
+<div class="mobile-gate">
+  <div class="gate-icon">&#9776;</div>
+  <div class="gate-text" data-i18n="mobile-gate">
+    此學習路徑需要更寬的視窗。請在較大的螢幕上開啟。
+  </div>
+</div>
+
+<div class="koan-page">
+
+  <div class="koan-number" data-i18n="k07-number">Koan 07</div>
+  <h1 class="koan-title" data-i18n="k07-title">Write-Behind (Write-Back) Cache</h1>
+  <p class="koan-zen" data-i18n="k07-zen">弟子問：「如果先記住，晚點再寫呢？」師父說：「那你最好祈禱不要忘記。」</p>
+
+  <h2 class="koan-section-title" data-i18n="k07-section-concept">概念</h2>
+  <p class="koan-text" data-i18n="k07-text">
+    Write-Behind（又稱 Write-Back）策略中，應用程式只寫入快取，快取立即回傳成功。資料會被放入一個寫入佇列，稍後再非同步地批次寫入資料庫。寫入速度極快，但若快取在刷新前當機，佇列中的資料將永久遺失。
+  </p>
+
+  <h2 class="koan-section-title" data-i18n="k07-section-diagram">互動圖解</h2>
+  <p class="koan-text" data-i18n="k07-text-diagram">點擊「寫入資料」將資料送入快取。觀察佇列累積資料，然後嘗試「模擬當機」看看會發生什麼。</p>
+
+  <div class="koan-interactive">
+    <div class="diagram-container" id="wb-diagram">
+      <svg viewBox="0 0 700 240" xmlns="http://www.w3.org/2000/svg">
+        <defs>
+          <marker id="wb-arrow" markerWidth="8" markerHeight="6" refX="8" refY="3" orient="auto">
+            <polygon points="0 0, 8 3, 0 6" fill="rgba(255,255,255,0.3)"/>
+          </marker>
+        </defs>
+
+        <!-- App Node -->
+        <g class="svg-node" id="wb-app" transform="translate(30, 80)">
+          <rect width="90" height="60" rx="8" fill="rgba(22,27,34,0.8)" stroke="rgba(255,255,255,0.08)" stroke-width="1.5"/>
+          <text x="45" y="25" text-anchor="middle" fill="#a5a5a5" font-family="var(--font-mono)" font-size="11" data-i18n="k07-node-app">App</text>
+          <text x="45" y="45" text-anchor="middle" font-size="18">&#9881;</text>
+        </g>
+
+        <!-- Cache Node -->
+        <g class="svg-node" id="wb-cache" transform="translate(190, 80)">
+          <rect width="90" height="60" rx="8" fill="rgba(22,27,34,0.8)" stroke="rgba(255,255,255,0.08)" stroke-width="1.5"/>
+          <text x="45" y="25" text-anchor="middle" fill="#a5a5a5" font-family="var(--font-mono)" font-size="11" data-i18n="k07-node-cache">Cache</text>
+          <text x="45" y="45" text-anchor="middle" font-size="18">&#9889;</text>
+        </g>
+
+        <!-- Queue -->
+        <g id="wb-queue-group" transform="translate(350, 70)">
+          <rect width="140" height="80" rx="8" fill="rgba(22,27,34,0.8)" stroke="rgba(210,153,34,0.3)" stroke-width="1.5" stroke-dasharray="4,3"/>
+          <text x="70" y="18" text-anchor="middle" fill="#d29922" font-family="var(--font-mono)" font-size="10" data-i18n="k07-node-queue">Write Queue</text>
+          <g id="wb-queue-items"></g>
+        </g>
+
+        <!-- DB Node -->
+        <g class="svg-node" id="wb-db" transform="translate(560, 80)">
+          <rect width="90" height="60" rx="8" fill="rgba(22,27,34,0.8)" stroke="rgba(255,255,255,0.08)" stroke-width="1.5"/>
+          <text x="45" y="25" text-anchor="middle" fill="#a5a5a5" font-family="var(--font-mono)" font-size="11" data-i18n="k07-node-db">Database</text>
+          <text x="45" y="45" text-anchor="middle" font-size="18">&#128451;</text>
+        </g>
+
+        <!-- Arrows -->
+        <line x1="120" y1="110" x2="185" y2="110" stroke="rgba(255,255,255,0.15)" stroke-width="1.5" marker-end="url(#wb-arrow)"/>
+        <line x1="280" y1="110" x2="345" y2="110" stroke="rgba(210,153,34,0.3)" stroke-width="1.5" marker-end="url(#wb-arrow)" stroke-dasharray="4,3"/>
+        <line x1="490" y1="110" x2="555" y2="110" stroke="rgba(255,255,255,0.15)" stroke-width="1.5" marker-end="url(#wb-arrow)"/>
+
+        <!-- Labels -->
+        <text x="152" y="98" text-anchor="middle" fill="#6a7280" font-family="var(--font-mono)" font-size="9" data-i18n="k07-arrow-fast">fast</text>
+        <text x="520" y="98" text-anchor="middle" fill="#6a7280" font-family="var(--font-mono)" font-size="9" data-i18n="k07-arrow-async">async</text>
+
+        <!-- Status -->
+        <text id="wb-status" x="350" y="225" font-family="var(--font-mono)" font-size="11" fill="#6a7280"></text>
+
+        <!-- Crash overlay -->
+        <g id="wb-crash-overlay" opacity="0">
+          <rect x="340" y="60" width="160" height="100" rx="8" fill="rgba(248,81,73,0.15)" stroke="#f85149" stroke-width="2"/>
+          <text x="420" y="115" text-anchor="middle" fill="#f85149" font-family="var(--font-mono)" font-size="12" font-weight="600">DATA LOST</text>
+        </g>
+      </svg>
+    </div>
+
+    <div style="display:flex; gap:1rem; align-items:center; flex-wrap:wrap;">
+      <button class="action-btn" id="wb-write-btn" data-i18n="k07-btn-write">&#9654; 寫入資料</button>
+      <button class="action-btn" id="wb-flush-btn" data-i18n="k07-btn-flush">&#8634; 刷新到 DB</button>
+      <button class="action-btn" id="wb-crash-btn" style="border-color:rgba(248,81,73,0.3);color:#f85149;" data-i18n="k07-btn-crash">&#9888; 模擬當機</button>
+    </div>
+
+    <div class="stats-row" style="margin-top:1rem;">
+      <div class="stat-item">
+        <div class="stat-value blue" id="wb-written">0</div>
+        <div class="stat-label" data-i18n="k07-stat-written">Written to Cache</div>
+      </div>
+      <div class="stat-item">
+        <div class="stat-value orange" id="wb-queued">0</div>
+        <div class="stat-label" data-i18n="k07-stat-queued">In Queue</div>
+      </div>
+      <div class="stat-item">
+        <div class="stat-value green" id="wb-flushed">0</div>
+        <div class="stat-label" data-i18n="k07-stat-flushed">Flushed to DB</div>
+      </div>
+      <div class="stat-item">
+        <div class="stat-value red" id="wb-lost">0</div>
+        <div class="stat-label" data-i18n="k07-stat-lost">Data Lost</div>
+      </div>
+    </div>
+  </div>
+
+  <h2 class="koan-section-title" data-i18n="k07-section-question">思考</h2>
+  <div class="question-group visible" id="wb-q1">
+    <div class="question-label" data-i18n="k07-q1">Write-Behind 最大的風險是什麼？</div>
+    <div class="question-options">
+      <div class="question-option" data-correct="true" data-i18n="k07-q1-a1">快取故障時佇列中的資料會遺失</div>
+      <div class="question-option" data-i18n="k07-q1-a2">讀取速度很慢</div>
+      <div class="question-option" data-i18n="k07-q1-a3">記憶體使用量很高</div>
+    </div>
+    <div class="question-feedback" id="wb-q1-feedback"></div>
+  </div>
+
+  <div class="k07-insight">
+    <div class="insight-box">
+      <div class="insight-label" data-i18n="k07-insight-label">Insight</div>
+      <div class="insight-text" data-i18n-html="k07-insight-text">
+        Write-Behind 被廣泛運用於 <strong>Linux page cache</strong>、<strong>CPU 快取</strong>和某些資料庫（如 Cassandra）。它是速度與耐久性之間的經典取捨：<code>寫入速度 &uarr; ，資料安全 &darr;</code>。在不容許資料遺失的場景中，應搭配 WAL（Write-Ahead Log）等機制降低風險。
+      </div>
+    </div>
+  </div>
+
+</div>
+
+<script src="../js/progress.js"></script>
+<script src="../js/scroll.js"></script>
+<script>
+(function () {
+  'use strict';
+
+  let queue = [];
+  let writtenCount = 0;
+  let flushedCount = 0;
+  let lostCount = 0;
+  let dataId = 0;
+  let crashed = false;
+
+  const queueItemsEl = document.getElementById('wb-queue-items');
+  const crashOverlay = document.getElementById('wb-crash-overlay');
+  const statusEl = document.getElementById('wb-status');
+
+  function renderQueue() {
+    queueItemsEl.innerHTML = '';
+    queue.forEach((item, i) => {
+      const y = 28 + i * 14;
+      if (y > 65) return;
+      const text = document.createElementNS('http://www.w3.org/2000/svg', 'text');
+      text.setAttribute('x', '10');
+      text.setAttribute('y', String(y));
+      text.setAttribute('fill', '#d29922');
+      text.setAttribute('font-family', 'var(--font-mono)');
+      text.setAttribute('font-size', '9');
+      text.textContent = item;
+      queueItemsEl.appendChild(text);
+    });
+    document.getElementById('wb-queued').textContent = queue.length;
+  }
+
+  function updateStats() {
+    document.getElementById('wb-written').textContent = writtenCount;
+    document.getElementById('wb-flushed').textContent = flushedCount;
+    document.getElementById('wb-lost').textContent = lostCount;
+  }
+
+  // Write button
+  document.getElementById('wb-write-btn').addEventListener('click', function () {
+    if (crashed) return;
+    dataId++;
+    writtenCount++;
+    queue.push('item_' + dataId);
+
+    // Flash cache node
+    const cacheNode = document.getElementById('wb-cache');
+    cacheNode.classList.add('hit');
+    setTimeout(() => cacheNode.classList.remove('hit'), 500);
+
+    statusEl.textContent = 'item_' + dataId + ' \u2192 cache \u2713 (queued)';
+    statusEl.setAttribute('fill', '#3fb950');
+
+    renderQueue();
+    updateStats();
+  });
+
+  // Flush button
+  document.getElementById('wb-flush-btn').addEventListener('click', async function () {
+    if (crashed || queue.length === 0) return;
+    const dbNode = document.getElementById('wb-db');
+
+    while (queue.length > 0) {
+      const item = queue.shift();
+      flushedCount++;
+      dbNode.classList.add('hit');
+      statusEl.textContent = item + ' \u2192 DB \u2713';
+      statusEl.setAttribute('fill', '#3fb950');
+      renderQueue();
+      updateStats();
+      await new Promise(r => setTimeout(r, 300));
+    }
+
+    setTimeout(() => dbNode.classList.remove('hit'), 500);
+    statusEl.textContent = 'Queue flushed!';
+  });
+
+  // Crash button
+  document.getElementById('wb-crash-btn').addEventListener('click', function () {
+    if (crashed) return;
+    crashed = true;
+
+    const lost = queue.length;
+    lostCount += lost;
+
+    // Show crash overlay
+    crashOverlay.setAttribute('opacity', '1');
+    const cacheNode = document.getElementById('wb-cache');
+    cacheNode.classList.add('miss');
+
+    statusEl.textContent = '\u26a0 CRASH! ' + lost + ' items lost from queue!';
+    statusEl.setAttribute('fill', '#f85149');
+
+    queue = [];
+    renderQueue();
+    updateStats();
+
+    // Allow reset after 3 seconds
+    setTimeout(() => {
+      crashed = false;
+      crashOverlay.setAttribute('opacity', '0');
+      cacheNode.classList.remove('miss');
+      statusEl.textContent = 'System recovered. Queue empty.';
+      statusEl.setAttribute('fill', '#6a7280');
+    }, 3000);
+  });
+
+  // --- Questions ---
+  document.querySelectorAll('#wb-q1 .question-option').forEach(opt => {
+    opt.addEventListener('click', function () {
+      if (this.classList.contains('correct') || this.classList.contains('incorrect')) return;
+      const isCorrect = this.dataset.correct === 'true';
+      const feedback = document.getElementById('wb-q1-feedback');
+
+      document.querySelectorAll('#wb-q1 .question-option').forEach(o => {
+        if (o.dataset.correct === 'true') o.classList.add('correct');
+        else o.classList.add('disabled');
+      });
+
+      if (isCorrect) {
+        feedback.textContent = '\u2713 \u6b63\u78ba\uff01\u5feb\u53d6\u7576\u6a5f\u524d\uff0c\u4f47\u5217\u4e2d\u5c1a\u672a\u5beb\u5165 DB \u7684\u8cc7\u6599\u6703\u6c38\u4e45\u907a\u5931\u3002';
+        feedback.className = 'question-feedback visible correct';
+      } else {
+        this.classList.add('incorrect');
+        feedback.textContent = '\u2717 \u518d\u60f3\u60f3\u2014\u2014Write-Behind \u7684\u8b80\u53d6\u901f\u5ea6\u5f88\u5feb\uff0c\u8a18\u61b6\u9ad4\u4e5f\u4e0d\u662f\u4e3b\u8981\u554f\u984c\u3002';
+        feedback.className = 'question-feedback visible incorrect';
+      }
+
+      setTimeout(() => {
+        document.querySelector('.k07-insight').classList.add('visible');
+      }, 600);
+    });
+  });
+})();
+</script>
+</body>
+</html>

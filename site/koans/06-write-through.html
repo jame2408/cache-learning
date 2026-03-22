@@ -1,0 +1,279 @@
+<!DOCTYPE html>
+<html lang="zh-TW">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Cache Koans — Write-Through Cache</title>
+  <link rel="stylesheet" href="../css/shared.css">
+  <script src="../js/i18n.js"></script>
+</head>
+<body>
+
+<!-- Mobile Gate -->
+<div class="mobile-gate">
+  <div class="gate-icon">&#9776;</div>
+  <div class="gate-text" data-i18n="mobile-gate">
+    此學習路徑需要更寬的視窗。請在較大的螢幕上開啟。
+  </div>
+</div>
+
+<div class="koan-page">
+
+  <div class="koan-number" data-i18n="k06-number">Koan 06</div>
+  <h1 class="koan-title" data-i18n="k06-title">Write-Through Cache</h1>
+  <p class="koan-zen" data-i18n="k06-zen">師父說：「先寫入快取，再寫入資料庫。每一步都不能省。」</p>
+
+  <h2 class="koan-section-title" data-i18n="k06-section-concept">概念</h2>
+  <p class="koan-text" data-i18n="k06-text">
+    Write-Through 策略中，每次寫入操作會同時更新快取與資料庫。應用程式先寫入快取，快取再同步寫入資料庫。只有當兩者都成功，操作才算完成。快取永遠與資料庫保持一致，但寫入延遲較高。
+  </p>
+
+  <h2 class="koan-section-title" data-i18n="k06-section-flow">寫入流程</h2>
+  <div class="koan-interactive">
+    <div class="diagram-container" id="wt-diagram">
+      <svg viewBox="0 0 700 200" xmlns="http://www.w3.org/2000/svg">
+        <!-- Nodes -->
+        <g class="svg-node" id="wt-app" transform="translate(50, 70)">
+          <rect width="100" height="60" rx="8" fill="rgba(22,27,34,0.8)" stroke="rgba(255,255,255,0.08)" stroke-width="1.5"/>
+          <text x="50" y="25" text-anchor="middle" fill="#a5a5a5" font-family="var(--font-mono)" font-size="11" data-i18n="k06-node-app">Application</text>
+          <text x="50" y="45" text-anchor="middle" font-size="18">&#9881;</text>
+        </g>
+        <g class="svg-node" id="wt-cache" transform="translate(300, 70)">
+          <rect width="100" height="60" rx="8" fill="rgba(22,27,34,0.8)" stroke="rgba(255,255,255,0.08)" stroke-width="1.5"/>
+          <text x="50" y="25" text-anchor="middle" fill="#a5a5a5" font-family="var(--font-mono)" font-size="11" data-i18n="k06-node-cache">Cache</text>
+          <text x="50" y="45" text-anchor="middle" font-size="18">&#9889;</text>
+        </g>
+        <g class="svg-node" id="wt-db" transform="translate(550, 70)">
+          <rect width="100" height="60" rx="8" fill="rgba(22,27,34,0.8)" stroke="rgba(255,255,255,0.08)" stroke-width="1.5"/>
+          <text x="50" y="25" text-anchor="middle" fill="#a5a5a5" font-family="var(--font-mono)" font-size="11" data-i18n="k06-node-db">Database</text>
+          <text x="50" y="45" text-anchor="middle" font-size="18">&#128451;</text>
+        </g>
+
+        <!-- Arrows -->
+        <line x1="150" y1="100" x2="295" y2="100" stroke="rgba(255,255,255,0.15)" stroke-width="1.5" marker-end="url(#arrowhead)"/>
+        <line x1="400" y1="100" x2="545" y2="100" stroke="rgba(255,255,255,0.15)" stroke-width="1.5" marker-end="url(#arrowhead)"/>
+
+        <!-- Arrow labels -->
+        <text x="220" y="90" text-anchor="middle" fill="#6a7280" font-family="var(--font-mono)" font-size="10" data-i18n="k06-arrow-write1">1. Write</text>
+        <text x="470" y="90" text-anchor="middle" fill="#6a7280" font-family="var(--font-mono)" font-size="10" data-i18n="k06-arrow-write2">2. Write</text>
+
+        <!-- Status labels -->
+        <text id="wt-status-cache" x="350" y="55" text-anchor="middle" fill="#3fb950" font-family="var(--font-mono)" font-size="10" opacity="0"></text>
+        <text id="wt-status-db" x="600" y="55" text-anchor="middle" fill="#3fb950" font-family="var(--font-mono)" font-size="10" opacity="0"></text>
+
+        <!-- Particle -->
+        <circle id="wt-particle" r="5" fill="#58a6ff" opacity="0"/>
+
+        <defs>
+          <marker id="arrowhead" markerWidth="8" markerHeight="6" refX="8" refY="3" orient="auto">
+            <polygon points="0 0, 8 3, 0 6" fill="rgba(255,255,255,0.3)"/>
+          </marker>
+        </defs>
+      </svg>
+    </div>
+
+    <button class="action-btn" id="wt-run-btn" data-i18n="k06-btn-run">&#9654; 執行寫入</button>
+
+    <div class="stats-row" style="margin-top:1rem;">
+      <div class="stat-item">
+        <div class="stat-value blue" id="wt-writes">0</div>
+        <div class="stat-label" data-i18n="k06-stat-writes">Writes</div>
+      </div>
+      <div class="stat-item">
+        <div class="stat-value green" id="wt-consistent">0</div>
+        <div class="stat-label" data-i18n="k06-stat-consistent">Consistent</div>
+      </div>
+      <div class="stat-item">
+        <div class="stat-value orange" id="wt-latency">0ms</div>
+        <div class="stat-label" data-i18n="k06-stat-latency">Avg Latency</div>
+      </div>
+    </div>
+  </div>
+
+  <h2 class="koan-section-title" data-i18n="k06-section-timeline">時間線</h2>
+  <div class="koan-interactive">
+    <div class="timeline" id="wt-timeline">
+      <div class="timeline-step" id="wt-step1">
+        <div style="font-size:0.85rem;color:var(--text-primary);" data-i18n="k06-step1-title">App 發出寫入請求</div>
+        <div style="font-size:0.8rem;color:var(--text-dim);" data-i18n="k06-step1-desc">應用程式準備寫入 key=product_1, value=新價格</div>
+      </div>
+      <div class="timeline-step" id="wt-step2">
+        <div style="font-size:0.85rem;color:var(--text-primary);" data-i18n="k06-step2-title">寫入 Cache</div>
+        <div style="font-size:0.8rem;color:var(--text-dim);" data-i18n="k06-step2-desc">快取已更新，但操作尚未結束</div>
+      </div>
+      <div class="timeline-step" id="wt-step3">
+        <div style="font-size:0.85rem;color:var(--text-primary);" data-i18n="k06-step3-title">同步寫入 Database</div>
+        <div style="font-size:0.8rem;color:var(--text-dim);" data-i18n="k06-step3-desc">快取將資料同步寫入資料庫，等待確認</div>
+      </div>
+      <div class="timeline-step" id="wt-step4">
+        <div style="font-size:0.85rem;color:var(--text-primary);" data-i18n="k06-step4-title">寫入完成</div>
+        <div style="font-size:0.8rem;color:var(--text-dim);" data-i18n="k06-step4-desc">Cache 和 DB 都已確認，操作才回傳成功</div>
+      </div>
+    </div>
+    <button class="action-btn" id="wt-timeline-btn" data-i18n="k06-btn-timeline">&#9654; 播放時間線</button>
+  </div>
+
+  <h2 class="koan-section-title" data-i18n="k06-section-question">思考</h2>
+  <div class="question-group visible" id="wt-q1">
+    <div class="question-label" data-i18n="k06-q1">Write-Through 的主要代價是什麼？</div>
+    <div class="question-options">
+      <div class="question-option" data-correct="true" data-i18n="k06-q1-a1">為了一致性而犧牲較高的寫入延遲</div>
+      <div class="question-option" data-i18n="k06-q1-a2">有資料遺失的風險</div>
+      <div class="question-option" data-i18n="k06-q1-a3">程式碼實作非常複雜</div>
+    </div>
+    <div class="question-feedback" id="wt-q1-feedback"></div>
+  </div>
+
+  <div class="k06-insight">
+    <div class="insight-box">
+      <div class="insight-label" data-i18n="k06-insight-label">Insight</div>
+      <div class="insight-text" data-i18n-html="k06-insight-text">
+        Write-Through 非常適合<strong>讀取密集</strong>的工作負載——你可以容忍稍慢的寫入，以換取讀取時永遠命中快取。Redis 和許多 ORM 框架都支援這種策略。關鍵在於：<code>一致性 > 寫入速度</code>。
+      </div>
+    </div>
+  </div>
+
+</div>
+
+<script src="../js/progress.js"></script>
+<script src="../js/scroll.js"></script>
+<script>
+(function () {
+  'use strict';
+
+  // --- Diagram Animation ---
+  const particle = document.getElementById('wt-particle');
+  const runBtn = document.getElementById('wt-run-btn');
+  const statusCache = document.getElementById('wt-status-cache');
+  const statusDB = document.getElementById('wt-status-db');
+  let writeCount = 0;
+  let totalLatency = 0;
+  let running = false;
+
+  function animateParticle(x1, y1, x2, y2, duration) {
+    return new Promise(resolve => {
+      particle.setAttribute('cx', x1);
+      particle.setAttribute('cy', y1);
+      particle.setAttribute('opacity', '1');
+      const start = performance.now();
+      function frame(now) {
+        const t = Math.min((now - start) / duration, 1);
+        const ease = t * (2 - t);
+        particle.setAttribute('cx', x1 + (x2 - x1) * ease);
+        particle.setAttribute('cy', y1 + (y2 - y1) * ease);
+        if (t < 1) requestAnimationFrame(frame);
+        else resolve();
+      }
+      requestAnimationFrame(frame);
+    });
+  }
+
+  async function runWrite() {
+    if (running) return;
+    running = true;
+    runBtn.classList.add('done');
+
+    const appNode = document.querySelector('#wt-app');
+    const cacheNode = document.querySelector('#wt-cache');
+    const dbNode = document.querySelector('#wt-db');
+
+    // Step 1: App -> Cache
+    appNode.classList.add('active');
+    await animateParticle(150, 100, 350, 100, 600);
+    appNode.classList.remove('active');
+    cacheNode.classList.add('hit');
+    statusCache.textContent = '\u2713 Updated';
+    statusCache.setAttribute('opacity', '1');
+
+    // Step 2: Cache -> DB
+    await new Promise(r => setTimeout(r, 300));
+    cacheNode.classList.add('active');
+    await animateParticle(400, 100, 600, 100, 800);
+    cacheNode.classList.remove('active');
+    dbNode.classList.add('hit');
+    statusDB.textContent = '\u2713 Synced';
+    statusDB.setAttribute('opacity', '1');
+    particle.setAttribute('opacity', '0');
+
+    // Update stats
+    writeCount++;
+    const latency = 600 + 800 + 300;
+    totalLatency += latency;
+    document.getElementById('wt-writes').textContent = writeCount;
+    document.getElementById('wt-consistent').textContent = writeCount;
+    document.getElementById('wt-latency').textContent = Math.round(totalLatency / writeCount) + 'ms';
+
+    await new Promise(r => setTimeout(r, 1000));
+    cacheNode.classList.remove('hit');
+    dbNode.classList.remove('hit');
+    statusCache.setAttribute('opacity', '0');
+    statusDB.setAttribute('opacity', '0');
+    runBtn.classList.remove('done');
+    running = false;
+  }
+
+  runBtn.addEventListener('click', runWrite);
+
+  // --- Timeline Animation ---
+  const timelineBtn = document.getElementById('wt-timeline-btn');
+  const steps = ['wt-step1', 'wt-step2', 'wt-step3', 'wt-step4'];
+  let timelinePlaying = false;
+
+  async function playTimeline() {
+    if (timelinePlaying) return;
+    timelinePlaying = true;
+    timelineBtn.classList.add('done');
+
+    steps.forEach(id => {
+      const el = document.getElementById(id);
+      el.classList.remove('visible', 'active', 'done');
+    });
+
+    for (let i = 0; i < steps.length; i++) {
+      await new Promise(r => setTimeout(r, 700));
+      const el = document.getElementById(steps[i]);
+      el.classList.add('visible', 'active');
+      if (i > 0) {
+        document.getElementById(steps[i - 1]).classList.remove('active');
+        document.getElementById(steps[i - 1]).classList.add('done');
+      }
+    }
+    await new Promise(r => setTimeout(r, 500));
+    document.getElementById(steps[steps.length - 1]).classList.remove('active');
+    document.getElementById(steps[steps.length - 1]).classList.add('done');
+    timelineBtn.classList.remove('done');
+    timelinePlaying = false;
+  }
+
+  timelineBtn.addEventListener('click', playTimeline);
+
+  // --- Questions ---
+  document.querySelectorAll('#wt-q1 .question-option').forEach(opt => {
+    opt.addEventListener('click', function () {
+      if (this.classList.contains('correct') || this.classList.contains('incorrect')) return;
+      const isCorrect = this.dataset.correct === 'true';
+      const feedback = document.getElementById('wt-q1-feedback');
+
+      document.querySelectorAll('#wt-q1 .question-option').forEach(o => {
+        if (o.dataset.correct === 'true') o.classList.add('correct');
+        else o.classList.add('disabled');
+      });
+
+      if (isCorrect) {
+        feedback.textContent = '\u2713 ' + (window.I18n && window.I18n.t('k06-q1-correct') || '\u6b63\u78ba\uff01\u5beb\u5165\u5fc5\u9808\u7b49\u5f85 Cache \u548c DB \u90fd\u5b8c\u6210\uff0c\u6240\u4ee5\u5ef6\u9072\u8f03\u9ad8\u3002');
+        feedback.className = 'question-feedback visible correct';
+      } else {
+        this.classList.add('incorrect');
+        feedback.textContent = '\u2717 ' + (window.I18n && window.I18n.t('k06-q1-wrong') || '\u4e0d\u5c0d\u3002Write-Through \u7684\u6838\u5fc3\u4ee3\u50f9\u662f\u5ef6\u9072\uff0c\u4e0d\u662f\u8cc7\u6599\u907a\u5931\u6216\u8907\u96dc\u5ea6\u3002');
+        feedback.className = 'question-feedback visible incorrect';
+      }
+
+      setTimeout(() => {
+        document.querySelector('.k06-insight').classList.add('visible');
+      }, 600);
+    });
+  });
+})();
+</script>
+</body>
+</html>

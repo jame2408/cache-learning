@@ -1,0 +1,283 @@
+<!DOCTYPE html>
+<html lang="zh-TW">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Cache Koan 25 - Real-World Caching</title>
+  <link rel="stylesheet" href="../css/shared.css">
+  <script src="../js/i18n.js"></script>
+</head>
+<body>
+
+<div class="mobile-gate">
+  <div class="gate-icon">&#9776;</div>
+  <div class="gate-text" data-i18n="mobile-gate">此學習路徑需要更寬的視窗。請在較大的螢幕上開啟。</div>
+</div>
+
+<div class="koan-page">
+  <div class="koan-number" data-i18n="k25-number">Koan 25</div>
+  <h1 class="koan-title" data-i18n="k25-title">真實世界的快取</h1>
+  <p class="koan-zen" data-i18n="k25-zen">「弟子問：『我已學完所有快取之道。』師父說：『那就回去，建造你的系統。當快取在凌晨三點失效時——你會真正理解。』」</p>
+
+  <h2 class="koan-section-title" data-i18n="k25-section-explain">理解</h2>
+  <p class="koan-text" data-i18n="k25-explain">在真實世界中，快取無處不在：CDN 快取、瀏覽器快取、DNS 快取、CPU 快取階層（L1/L2/L3）、資料庫查詢快取。它們看似不同，但都遵循相同的原則——用空間換時間，以局部性原理為基礎。</p>
+
+  <h2 class="koan-section-title" data-i18n="k25-section-interactive">現代 Web 應用快取層架構</h2>
+  <p class="koan-text" data-i18n="k25-interactive-desc">點擊每一層快取，了解其角色與特性。</p>
+
+  <div class="koan-interactive">
+    <div class="diagram-container">
+      <svg viewBox="0 0 700 420" id="arch-svg">
+        <!-- Layer boxes - vertical stack -->
+        <g class="svg-node layer-node" id="layer-browser" style="cursor:pointer">
+          <rect x="200" y="10" width="300" height="45" rx="8" fill="#111820" stroke="#6a7280" stroke-width="2"/>
+          <text x="350" y="38" fill="#e0e0e0" font-size="13" text-anchor="middle" data-i18n="k25-layer-browser">&#127760; 瀏覽器快取</text>
+        </g>
+        <line x1="350" y1="55" x2="350" y2="75" stroke="#6a7280" stroke-width="1" stroke-dasharray="4"/>
+
+        <g class="svg-node layer-node" id="layer-cdn" style="cursor:pointer">
+          <rect x="200" y="75" width="300" height="45" rx="8" fill="#111820" stroke="#6a7280" stroke-width="2"/>
+          <text x="350" y="103" fill="#e0e0e0" font-size="13" text-anchor="middle" data-i18n="k25-layer-cdn">&#9729; CDN</text>
+        </g>
+        <line x1="350" y1="120" x2="350" y2="140" stroke="#6a7280" stroke-width="1" stroke-dasharray="4"/>
+
+        <g class="svg-node layer-node" id="layer-lb" style="cursor:pointer">
+          <rect x="200" y="140" width="300" height="45" rx="8" fill="#111820" stroke="#6a7280" stroke-width="2"/>
+          <text x="350" y="168" fill="#e0e0e0" font-size="13" text-anchor="middle" data-i18n="k25-layer-lb">&#9878; 負載均衡器</text>
+        </g>
+        <line x1="350" y1="185" x2="350" y2="205" stroke="#6a7280" stroke-width="1" stroke-dasharray="4"/>
+
+        <g class="svg-node layer-node" id="layer-l1" style="cursor:pointer">
+          <rect x="200" y="205" width="300" height="45" rx="8" fill="#111820" stroke="#6a7280" stroke-width="2"/>
+          <text x="350" y="233" fill="#e0e0e0" font-size="13" text-anchor="middle" data-i18n="k25-layer-l1">&#128187; 應用本地快取 (L1)</text>
+        </g>
+        <line x1="350" y1="250" x2="350" y2="270" stroke="#6a7280" stroke-width="1" stroke-dasharray="4"/>
+
+        <g class="svg-node layer-node" id="layer-redis" style="cursor:pointer">
+          <rect x="200" y="270" width="300" height="45" rx="8" fill="#111820" stroke="#6a7280" stroke-width="2"/>
+          <text x="350" y="298" fill="#e0e0e0" font-size="13" text-anchor="middle" data-i18n="k25-layer-redis">&#128296; 分散式快取 (Redis)</text>
+        </g>
+        <line x1="350" y1="315" x2="350" y2="335" stroke="#6a7280" stroke-width="1" stroke-dasharray="4"/>
+
+        <g class="svg-node layer-node" id="layer-db" style="cursor:pointer">
+          <rect x="200" y="335" width="300" height="45" rx="8" fill="#111820" stroke="#6a7280" stroke-width="2"/>
+          <text x="350" y="363" fill="#e0e0e0" font-size="13" text-anchor="middle" data-i18n="k25-layer-db">&#128451; 資料庫</text>
+        </g>
+
+        <!-- Latency labels on right side -->
+        <text x="520" y="38" fill="#3fb950" font-size="10" id="latency-browser">~0ms</text>
+        <text x="520" y="103" fill="#3fb950" font-size="10" id="latency-cdn">~5-50ms</text>
+        <text x="520" y="168" fill="#58a6ff" font-size="10" id="latency-lb">~1ms</text>
+        <text x="520" y="233" fill="#3fb950" font-size="10" id="latency-l1">~0.1ms</text>
+        <text x="520" y="298" fill="#d29922" font-size="10" id="latency-redis">~1-5ms</text>
+        <text x="520" y="363" fill="#f85149" font-size="10" id="latency-db">~10-100ms</text>
+      </svg>
+    </div>
+
+    <!-- Detail panel for clicked layer -->
+    <div id="layer-detail" class="hidden" style="margin-top:1rem;padding:1.5rem;background:var(--bg-glass);border:1px solid var(--border-glass);border-radius:var(--radius-md)">
+      <div class="card-title" id="detail-title" style="margin-bottom:0.5rem"></div>
+      <p class="koan-text" id="detail-text" style="margin-bottom:0"></p>
+    </div>
+  </div>
+
+  <h2 class="koan-section-title" data-i18n="k25-section-cpu">CPU 快取階層</h2>
+  <p class="koan-text" data-i18n="k25-cpu-text">即使在硬體層面，快取也遵循相同的原理。CPU 的 L1/L2/L3 快取是速度與容量的經典取捨。</p>
+
+  <div class="koan-interactive">
+    <div class="stats-row">
+      <div class="stat-item">
+        <div class="stat-value green">~1ns</div>
+        <div class="stat-label">L1 Cache</div>
+      </div>
+      <div class="stat-item">
+        <div class="stat-value blue">~4ns</div>
+        <div class="stat-label">L2 Cache</div>
+      </div>
+      <div class="stat-item">
+        <div class="stat-value orange">~12ns</div>
+        <div class="stat-label">L3 Cache</div>
+      </div>
+      <div class="stat-item">
+        <div class="stat-value red">~100ns</div>
+        <div class="stat-label" data-i18n="k25-ram-label">主記憶體</div>
+      </div>
+    </div>
+    <p class="koan-text" data-i18n="k25-cpu-insight" style="margin-top:1rem;font-style:italic;color:var(--text-dim)">從 L1 到主記憶體，延遲差距高達 100 倍。這與 CDN 到資料庫的差距如出一轍。快取的本質不變。</p>
+  </div>
+
+  <h2 class="koan-section-title" data-i18n="k25-section-question">最後的思考</h2>
+  <div class="question-group visible" id="q1">
+    <div class="question-label" data-i18n="k25-q1">哪一層快取通常具有最低的延遲？</div>
+    <div class="question-options">
+      <div class="question-option" data-answer="correct" data-i18n="k25-q1-a">CPU L1 快取</div>
+      <div class="question-option" data-answer="wrong" data-i18n="k25-q1-b">CDN</div>
+      <div class="question-option" data-answer="wrong" data-i18n="k25-q1-c">瀏覽器快取</div>
+    </div>
+    <div class="question-feedback" id="q1-feedback"></div>
+  </div>
+
+  <div class="k25-insight">
+    <div class="insight-box">
+      <div class="insight-label" data-i18n="k25-insight-label">洞察</div>
+      <div class="insight-text" data-i18n-html="k25-insight-text">從 CPU L1 快取到 CDN，所有快取都遵循相同的核心原則：<code>局部性原理</code>（最近使用的資料很可能再次使用）、<code>空間換時間</code>（用額外記憶體換取更快的存取速度），以及<code>淘汰策略</code>（空間有限時決定移除哪些資料）。<br><br>你已經學完了 25 個 Cache Koans。真正的修行，從部署開始。</div>
+    </div>
+  </div>
+
+  <!-- Completion Section -->
+  <div id="completion-section" class="hidden" style="text-align:center;margin-top:3rem">
+    <h2 class="koan-section-title" data-i18n="k25-section-complete" style="text-align:center">&#127881; 修行完成</h2>
+    <p class="koan-text" data-i18n="k25-complete-text" style="text-align:center;max-width:100%">你已經完成了全部 25 個 Cache Koans！從快取的基礎概念到真實世界的應用，你已經走過了完整的修行之路。</p>
+    <button class="action-btn" id="btn-show-cert" data-i18n="k25-btn-cert" style="margin:1.5rem auto">查看結業證書</button>
+    <div style="margin-top:1rem">
+      <a href="../index.html" class="begin-link visible" data-i18n="k25-link-restart">&#8592; 回到起點，重新開始</a>
+    </div>
+  </div>
+</div>
+
+<!-- Certificate Modal -->
+<div class="cert-overlay" id="cert-overlay">
+  <div class="cert-modal">
+    <div style="font-size:2rem;margin-bottom:0.5rem">&#127942;</div>
+    <h2 style="font-family:var(--font-serif);font-size:1.5rem;color:var(--text-primary);margin-bottom:0.5rem" data-i18n="k25-cert-title">Cache Koans 結業證書</h2>
+    <p style="font-size:0.85rem;color:var(--text-secondary);margin-bottom:1rem" data-i18n="k25-cert-subtitle">Certificate of Completion</p>
+    <p style="font-size:0.8rem;color:var(--text-dim);margin-bottom:1rem" data-i18n="k25-cert-body">恭喜你完成了全部 25 個 Cache Koans。你已經掌握了快取的核心原理、模式、策略與實務應用。</p>
+    <input type="text" class="cert-name-input" id="cert-name" placeholder="輸入你的名字..." data-i18n-placeholder="k25-cert-placeholder">
+    <div id="cert-display" class="hidden" style="margin:1rem 0;padding:1.5rem;border:1px solid var(--accent-blue);border-radius:var(--radius-md);background:rgba(88,166,255,0.05)">
+      <div style="font-size:0.7rem;color:var(--text-dim);text-transform:uppercase;letter-spacing:2px" data-i18n="k25-cert-awarded">授予</div>
+      <div style="font-size:1.3rem;font-family:var(--font-serif);color:var(--accent-blue);margin:0.5rem 0" id="cert-name-display"></div>
+      <div style="font-size:0.75rem;color:var(--text-secondary)" data-i18n="k25-cert-for">完成 Cache Koans 全部 25 個章節</div>
+      <div style="font-size:0.7rem;color:var(--text-dim);margin-top:0.5rem" id="cert-date"></div>
+    </div>
+    <button class="action-btn" id="btn-generate-cert" data-i18n="k25-btn-generate">產生證書</button>
+    <button class="action-btn" id="btn-close-cert" style="margin-left:0.5rem" data-i18n="k25-btn-close">關閉</button>
+  </div>
+</div>
+
+<script src="../js/progress.js"></script>
+<script src="../js/scroll.js"></script>
+<script>
+(function () {
+  'use strict';
+
+  // --- Layer detail data ---
+  const layerData = {
+    browser: {
+      title: '\u{1F310} \u700F\u89BD\u5668\u5FEB\u53D6',
+      text: '\u700F\u89BD\u5668\u5FEB\u53D6\u5132\u5B58\u975C\u614B\u8CC7\u6E90\uFF08HTML\u3001CSS\u3001JS\u3001\u5716\u7247\uFF09\u65BC\u672C\u6A5F\u78C1\u789F\u3002\u900F\u904E Cache-Control\u3001ETag\u3001Last-Modified \u7B49 HTTP \u6A19\u982D\u63A7\u5236\u3002\u5EF6\u9072\u6700\u4F4E\uFF08\u7121\u7DB2\u8DEF\u8ACB\u6C42\uFF09\uFF0C\u4F46\u50C5\u9650\u55AE\u4E00\u4F7F\u7528\u8005\u3002'
+    },
+    cdn: {
+      title: '\u2601 CDN',
+      text: 'CDN \u5C07\u5167\u5BB9\u5FEB\u53D6\u5728\u5168\u7403\u5404\u5730\u7684\u908A\u7DE3\u7BC0\u9EDE\u3002\u4F7F\u7528\u8005\u5F9E\u6700\u8FD1\u7684\u7BC0\u9EDE\u53D6\u5F97\u8CC7\u6599\uFF0C\u5927\u5E45\u964D\u4F4E\u5EF6\u9072\u3002\u9069\u5408\u975C\u614B\u8CC7\u6E90\u548C\u4E0D\u5E38\u8B8A\u52D5\u7684 API \u56DE\u61C9\u3002'
+    },
+    lb: {
+      title: '\u2696 \u8CA0\u8F09\u5747\u8861\u5668',
+      text: '\u8CA0\u8F09\u5747\u8861\u5668\u672C\u8EAB\u53EF\u4EE5\u5FEB\u53D6\u5E38\u898B\u8ACB\u6C42\u7684\u56DE\u61C9\uFF0C\u6E1B\u5C11\u5F8C\u7AEF\u4F3A\u670D\u5668\u7684\u58D3\u529B\u3002\u4F8B\u5982 Nginx \u7684 proxy_cache \u529F\u80FD\u3002'
+    },
+    l1: {
+      title: '\u{1F4BB} \u61C9\u7528\u672C\u5730\u5FEB\u53D6 (L1)',
+      text: '\u61C9\u7528\u7A0B\u5F0F\u5167\u7684\u8A18\u61B6\u9AD4\u5FEB\u53D6\uFF08\u5982 HashMap\u3001Guava Cache\uFF09\u3002\u5EF6\u9072\u6975\u4F4E\uFF08\u5FAE\u79D2\u7D1A\uFF09\uFF0C\u4F46\u50C5\u9650\u55AE\u4E00\u7A0B\u5F0F\u5BE6\u4F8B\uFF0C\u91CD\u555F\u5F8C\u6D88\u5931\u3002'
+    },
+    redis: {
+      title: '\u{1F528} \u5206\u6563\u5F0F\u5FEB\u53D6 (Redis)',
+      text: 'Redis/Memcached \u63D0\u4F9B\u8DE8\u7A0B\u5F0F\u5BE6\u4F8B\u7684\u5171\u4EAB\u5FEB\u53D6\u3002\u5EF6\u9072\u7A0D\u9AD8\uFF08\u6BEB\u79D2\u7D1A\uFF0C\u9700\u7DB2\u8DEF\u5F80\u8FD4\uFF09\uFF0C\u4F46\u5BB9\u91CF\u5927\u4E14\u8DE8\u7BC0\u9EDE\u5171\u4EAB\u3002\u652F\u63F4\u8C50\u5BCC\u7684\u8CC7\u6599\u7D50\u69CB\u3002'
+    },
+    db: {
+      title: '\u{1F5C3} \u8CC7\u6599\u5EAB',
+      text: '\u8CC7\u6599\u5EAB\u662F\u8CC7\u6599\u7684\u6700\u7D42\u4F86\u6E90\u3002\u591A\u6578\u8CC7\u6599\u5EAB\u6709\u5167\u5EFA\u7684\u67E5\u8A62\u5FEB\u53D6\uFF08\u5982 MySQL Query Cache\u3001PostgreSQL \u7684 shared_buffers\uFF09\u3002\u5EF6\u9072\u6700\u9AD8\uFF0C\u4F46\u8CC7\u6599\u6700\u5B8C\u6574\u3002'
+    }
+  };
+
+  const detailPanel = document.getElementById('layer-detail');
+  const detailTitle = document.getElementById('detail-title');
+  const detailText = document.getElementById('detail-text');
+
+  document.querySelectorAll('.layer-node').forEach(node => {
+    node.addEventListener('click', () => {
+      const id = node.id.replace('layer-', '');
+      const data = layerData[id];
+      if (!data) return;
+
+      // Highlight active layer
+      document.querySelectorAll('.layer-node').forEach(n => n.classList.remove('active'));
+      node.classList.add('active');
+
+      detailTitle.textContent = data.title;
+      detailText.textContent = data.text;
+      detailPanel.classList.remove('hidden');
+      detailPanel.style.animation = 'fade-in-up 0.3s var(--ease-out) forwards';
+    });
+  });
+
+  // --- Question ---
+  let q1Answered = false;
+  document.querySelectorAll('#q1 .question-option').forEach(opt => {
+    opt.addEventListener('click', () => {
+      if (q1Answered) return;
+      const isCorrect = opt.getAttribute('data-answer') === 'correct';
+      if (isCorrect) {
+        q1Answered = true;
+        opt.classList.add('correct');
+        const fb = document.getElementById('q1-feedback');
+        fb.textContent = '\u2713 \u6B63\u78BA\uFF01CPU L1 \u5FEB\u53D6\u7684\u5EF6\u9072\u50C5\u7D04 1 \u5948\u79D2\uFF0C\u662F\u6240\u6709\u5FEB\u53D6\u5C64\u4E2D\u6700\u5FEB\u7684\u3002';
+        fb.classList.add('visible', 'correct');
+        document.querySelectorAll('#q1 .question-option').forEach(o => {
+          if (o !== opt) o.classList.add('disabled');
+        });
+        setTimeout(() => {
+          document.querySelector('.k25-insight').classList.add('visible');
+        }, 600);
+        // Show completion section after insight
+        setTimeout(() => {
+          document.getElementById('completion-section').classList.remove('hidden');
+          document.getElementById('completion-section').style.animation = 'fade-in-up 0.6s var(--ease-out) forwards';
+        }, 1200);
+      } else {
+        opt.classList.add('incorrect');
+        const fb = document.getElementById('q1-feedback');
+        fb.textContent = '\u2717 \u60F3\u60F3\u770B\u2014\u2014\u54EA\u4E00\u5C64\u96E2 CPU \u6700\u8FD1\uFF1F';
+        fb.classList.add('visible', 'incorrect');
+        setTimeout(() => {
+          fb.classList.remove('visible');
+          setTimeout(() => fb.classList.remove('incorrect'), 300);
+        }, 2000);
+      }
+    });
+  });
+
+  // --- Certificate Modal ---
+  const certOverlay = document.getElementById('cert-overlay');
+  const certNameInput = document.getElementById('cert-name');
+  const certNameDisplay = document.getElementById('cert-name-display');
+  const certDate = document.getElementById('cert-date');
+  const certDisplay = document.getElementById('cert-display');
+
+  document.getElementById('btn-show-cert').addEventListener('click', () => {
+    certOverlay.classList.add('visible');
+  });
+
+  document.getElementById('btn-close-cert').addEventListener('click', () => {
+    certOverlay.classList.remove('visible');
+  });
+
+  certOverlay.addEventListener('click', (e) => {
+    if (e.target === certOverlay) certOverlay.classList.remove('visible');
+  });
+
+  document.getElementById('btn-generate-cert').addEventListener('click', () => {
+    const name = certNameInput.value.trim();
+    if (!name) {
+      certNameInput.style.borderColor = 'var(--accent-red)';
+      setTimeout(() => certNameInput.style.borderColor = '', 1500);
+      return;
+    }
+    certNameDisplay.textContent = name;
+    const now = new Date();
+    certDate.textContent = now.toLocaleDateString('zh-TW', { year: 'numeric', month: 'long', day: 'numeric' });
+    certDisplay.classList.remove('hidden');
+    certDisplay.style.animation = 'fade-in-up 0.5s var(--ease-out) forwards';
+  });
+})();
+</script>
+</body>
+</html>

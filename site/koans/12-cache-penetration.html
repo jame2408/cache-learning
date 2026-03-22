@@ -1,0 +1,308 @@
+<!DOCTYPE html>
+<html lang="zh-TW">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Cache Koans — 快取穿透</title>
+  <link rel="stylesheet" href="../css/shared.css">
+  <script src="../js/i18n.js"></script>
+</head>
+<body>
+
+<!-- Mobile Gate -->
+<div class="mobile-gate">
+  <div class="gate-icon">&#9776;</div>
+  <div class="gate-text" data-i18n="mobile-gate">
+    此學習路徑需要更寬的視窗。請在較大的螢幕上開啟。
+  </div>
+</div>
+
+<div class="koan-page">
+  <div class="koan-number" data-i18n="k12-number">Koan 12</div>
+  <h1 class="koan-title" data-i18n="k12-title">快取穿透</h1>
+  <p class="koan-zen" data-i18n="k12-zen">弟子反覆查詢一個不存在的東西。快取無法幫助他，因為「無」無法被記住。</p>
+
+  <div class="koan-section-title" data-i18n="k12-section-explain">理解</div>
+  <p class="koan-text" data-i18n="k12-explain1">快取穿透發生在請求查詢的資料既不存在於快取中，也不存在於資料庫中。由於沒有東西可以快取，每次請求都會穿透快取直達資料庫，造成不必要的負載。</p>
+  <p class="koan-text" data-i18n="k12-explain2">這種模式經常被惡意攻擊者利用——故意查詢大量不存在的 key，讓快取形同虛設，直接壓垮資料庫。</p>
+
+  <div class="koan-section-title" data-i18n="k12-section-sim">模擬</div>
+  <p class="koan-text" data-i18n="k12-sim-desc">觀察不存在的 key 如何每次都穿透快取。然後啟用布隆過濾器來攔截無效請求。</p>
+
+  <div class="koan-interactive">
+    <div class="diagram-container">
+      <svg viewBox="0 0 700 280" id="penetration-svg">
+        <!-- Client -->
+        <g class="svg-node" id="p-client">
+          <rect x="30" y="100" width="100" height="50" rx="8" fill="#111820" stroke="#6a7280" stroke-width="2"/>
+          <text x="80" y="130" fill="#e0e0e0" font-size="12" text-anchor="middle" data-i18n="k12-svg-client">用戶端</text>
+        </g>
+        <!-- Bloom Filter (hidden initially) -->
+        <g class="svg-node" id="p-bloom" style="opacity:0.2">
+          <rect x="180" y="100" width="100" height="50" rx="8" fill="#111820" stroke="#6a7280" stroke-width="2"/>
+          <text x="230" y="122" fill="#bc8cff" font-size="10" text-anchor="middle" data-i18n="k12-svg-bloom">布隆過濾器</text>
+          <text x="230" y="140" fill="#6a7280" font-size="9" text-anchor="middle">Bloom Filter</text>
+        </g>
+        <!-- Cache -->
+        <g class="svg-node" id="p-cache">
+          <rect x="340" y="100" width="100" height="50" rx="8" fill="#111820" stroke="#6a7280" stroke-width="2"/>
+          <text x="390" y="130" fill="#e0e0e0" font-size="12" text-anchor="middle" data-i18n="k12-svg-cache">快取</text>
+        </g>
+        <!-- DB -->
+        <g class="svg-node" id="p-db">
+          <rect x="500" y="100" width="100" height="50" rx="8" fill="#111820" stroke="#6a7280" stroke-width="2"/>
+          <text x="550" y="130" fill="#e0e0e0" font-size="12" text-anchor="middle" data-i18n="k12-svg-db">資料庫</text>
+        </g>
+        <!-- Arrows -->
+        <line x1="130" y1="125" x2="180" y2="125" stroke="rgba(255,255,255,0.08)" stroke-width="1.5"/>
+        <line x1="280" y1="125" x2="340" y2="125" stroke="rgba(255,255,255,0.08)" stroke-width="1.5"/>
+        <line x1="440" y1="125" x2="500" y2="125" stroke="rgba(255,255,255,0.08)" stroke-width="1.5"/>
+        <!-- Status text -->
+        <text id="p-status" x="350" y="200" fill="#6a7280" font-size="11" text-anchor="middle"></text>
+        <!-- Blocked indicator -->
+        <text id="p-blocked" x="230" y="85" fill="#3fb950" font-size="11" text-anchor="middle" style="opacity:0" data-i18n="k12-svg-blocked">已攔截!</text>
+      </svg>
+    </div>
+
+    <div class="stats-row">
+      <div class="stat-item">
+        <div class="stat-value blue" id="p-stat-total">0</div>
+        <div class="stat-label" data-i18n="k12-stat-total">總請求</div>
+      </div>
+      <div class="stat-item">
+        <div class="stat-value red" id="p-stat-penetrated">0</div>
+        <div class="stat-label" data-i18n="k12-stat-penetrated">穿透到 DB</div>
+      </div>
+      <div class="stat-item">
+        <div class="stat-value green" id="p-stat-blocked">0</div>
+        <div class="stat-label" data-i18n="k12-stat-blocked">被攔截</div>
+      </div>
+    </div>
+
+    <div style="margin-bottom:0.5rem">
+      <span style="font-size:0.8rem;color:var(--text-dim)" data-i18n="k12-db-load-label">資料庫負載</span>
+    </div>
+    <div class="load-meter">
+      <div class="load-meter-fill" id="p-load-bar" style="width:5%"></div>
+    </div>
+
+    <!-- Bloom Filter Visualization -->
+    <div style="margin-top:1.5rem">
+      <div style="font-size:0.8rem;color:var(--text-dim);margin-bottom:0.5rem" data-i18n="k12-bloom-label">布隆過濾器位元陣列</div>
+      <div class="bloom-filter-grid" id="bloom-grid"></div>
+    </div>
+
+    <div style="margin-top:1.5rem;display:flex;gap:1rem;flex-wrap:wrap">
+      <button class="action-btn" id="btn-penetrate" data-i18n="k12-btn-penetrate">發送無效請求 (x10)</button>
+      <button class="action-btn" id="btn-enable-bloom" data-i18n="k12-btn-bloom">啟用布隆過濾器</button>
+      <button class="action-btn" id="btn-p-reset" data-i18n="k12-btn-reset">重設</button>
+    </div>
+  </div>
+
+  <div class="koan-section-title" data-i18n="k12-section-question">思考</div>
+
+  <div class="question-group visible" id="q1">
+    <div class="question-label" data-i18n="k12-q1">什麼是 Null Object Cache（空值快取）？</div>
+    <div class="question-options">
+      <div class="question-option" data-answer="correct" data-i18n="k12-q1-a">將「不存在」的結果也快取起來</div>
+      <div class="question-option" data-answer="wrong" data-i18n="k12-q1-b">一個空的快取</div>
+      <div class="question-option" data-answer="wrong" data-i18n="k12-q1-c">一種特殊的資料庫</div>
+    </div>
+    <div class="question-feedback" id="q1-feedback"></div>
+  </div>
+
+  <div class="k12-insight">
+    <div class="insight-box">
+      <div class="insight-label" data-i18n="k12-insight-label">洞察</div>
+      <div class="insight-text" data-i18n-html="k12-insight-text">布隆過濾器空間效率極高，但有<code>假陽性</code>（可能誤判不存在的 key 為存在）。空值快取更簡單，但可能浪費記憶體。實務上兩者經常搭配使用：布隆過濾器擋在最前面，空值快取作為第二道防線。</div>
+    </div>
+  </div>
+</div>
+
+<script src="../js/progress.js"></script>
+<script src="../js/scroll.js"></script>
+<script>
+(function() {
+  'use strict';
+
+  // Build bloom filter grid
+  var bloomGrid = document.getElementById('bloom-grid');
+  var bloomBits = [];
+  var BLOOM_SIZE = 32;
+  for (var i = 0; i < BLOOM_SIZE; i++) {
+    var bit = document.createElement('div');
+    bit.className = 'bloom-bit';
+    bit.textContent = '0';
+    bloomGrid.appendChild(bit);
+    bloomBits.push(bit);
+  }
+
+  var bloomEnabled = false;
+  var bloomSet = new Set();
+  var totalReqs = 0;
+  var penetrated = 0;
+  var blocked = 0;
+
+  var validKeys = ['user:1001', 'user:1002', 'product:55', 'order:789', 'session:abc'];
+  // Pre-populate bloom filter with valid keys
+  var validHashes = [];
+  validKeys.forEach(function(key) {
+    var h1 = simpleHash(key, BLOOM_SIZE);
+    var h2 = simpleHash(key + ':salt', BLOOM_SIZE);
+    validHashes.push(h1, h2);
+  });
+
+  function simpleHash(str, mod) {
+    var hash = 0;
+    for (var i = 0; i < str.length; i++) {
+      hash = ((hash << 5) - hash + str.charCodeAt(i)) | 0;
+    }
+    return ((hash % mod) + mod) % mod;
+  }
+
+  function activateBloom() {
+    bloomEnabled = true;
+    document.getElementById('p-bloom').style.opacity = '1';
+    document.getElementById('p-bloom').querySelector('rect').setAttribute('stroke', '#bc8cff');
+    validHashes.forEach(function(idx) {
+      bloomBits[idx].className = 'bloom-bit set';
+      bloomBits[idx].textContent = '1';
+    });
+    document.getElementById('btn-enable-bloom').classList.add('done');
+  }
+
+  function setLoad(pct) {
+    var bar = document.getElementById('p-load-bar');
+    bar.style.width = pct + '%';
+    bar.className = 'load-meter-fill';
+    if (pct > 80) bar.classList.add('danger');
+    else if (pct > 50) bar.classList.add('warning');
+  }
+
+  function updateStats() {
+    document.getElementById('p-stat-total').textContent = totalReqs;
+    document.getElementById('p-stat-penetrated').textContent = penetrated;
+    document.getElementById('p-stat-blocked').textContent = blocked;
+  }
+
+  function flashNode(id, cls, duration) {
+    var el = document.getElementById(id);
+    el.classList.add(cls);
+    setTimeout(function() { el.classList.remove(cls); }, duration);
+  }
+
+  function sendInvalidRequests() {
+    var fakeKeys = [];
+    for (var i = 0; i < 10; i++) {
+      fakeKeys.push('fake:' + Math.floor(Math.random() * 99999));
+    }
+
+    var delay = 0;
+    fakeKeys.forEach(function(key) {
+      setTimeout(function() {
+        totalReqs++;
+
+        if (bloomEnabled) {
+          var h1 = simpleHash(key, BLOOM_SIZE);
+          var h2 = simpleHash(key + ':salt', BLOOM_SIZE);
+
+          // Flash checking bits
+          bloomBits[h1].className = 'bloom-bit checking';
+          bloomBits[h2].className = 'bloom-bit checking';
+
+          var isInBloom = bloomBits[h1].textContent === '1' && bloomBits[h2].textContent === '1';
+
+          setTimeout(function() {
+            bloomBits[h1].className = bloomBits[h1].textContent === '1' ? 'bloom-bit set' : 'bloom-bit';
+            bloomBits[h2].className = bloomBits[h2].textContent === '1' ? 'bloom-bit set' : 'bloom-bit';
+          }, 300);
+
+          if (!isInBloom) {
+            blocked++;
+            flashNode('p-bloom', 'hit', 400);
+            document.getElementById('p-blocked').style.opacity = '1';
+            setTimeout(function() {
+              document.getElementById('p-blocked').style.opacity = '0';
+            }, 500);
+          } else {
+            // False positive - still goes through
+            penetrated++;
+            flashNode('p-cache', 'miss', 400);
+            flashNode('p-db', 'active', 600);
+          }
+        } else {
+          penetrated++;
+          flashNode('p-cache', 'miss', 400);
+          setTimeout(function() {
+            flashNode('p-db', 'active', 400);
+          }, 200);
+        }
+
+        updateStats();
+        var loadPct = Math.min(95, 5 + (penetrated * 4));
+        setLoad(loadPct);
+      }, delay);
+      delay += 250;
+    });
+  }
+
+  function resetSim() {
+    totalReqs = 0;
+    penetrated = 0;
+    blocked = 0;
+    bloomEnabled = false;
+    bloomSet.clear();
+    updateStats();
+    setLoad(5);
+    document.getElementById('p-bloom').style.opacity = '0.2';
+    document.getElementById('p-bloom').querySelector('rect').setAttribute('stroke', '#6a7280');
+    document.getElementById('btn-enable-bloom').classList.remove('done');
+    bloomBits.forEach(function(bit) {
+      bit.className = 'bloom-bit';
+      bit.textContent = '0';
+    });
+    document.getElementById('p-status').textContent = '';
+    document.getElementById('p-cache').className = 'svg-node';
+    document.getElementById('p-db').className = 'svg-node';
+  }
+
+  document.getElementById('btn-penetrate').addEventListener('click', sendInvalidRequests);
+  document.getElementById('btn-enable-bloom').addEventListener('click', activateBloom);
+  document.getElementById('btn-p-reset').addEventListener('click', resetSim);
+
+  // Questions
+  var q1Answered = false;
+  document.querySelectorAll('#q1 .question-option').forEach(function(opt) {
+    opt.addEventListener('click', function() {
+      if (q1Answered) return;
+      var isCorrect = this.dataset.answer === 'correct';
+      if (isCorrect) {
+        q1Answered = true;
+        this.classList.add('correct');
+        var fb = document.getElementById('q1-feedback');
+        fb.textContent = '正確！快取「不存在」本身，就能阻止重複查詢資料庫。';
+        fb.className = 'question-feedback visible correct';
+        var self = this;
+        document.querySelectorAll('#q1 .question-option').forEach(function(o) {
+          if (o !== self) o.classList.add('disabled');
+        });
+        setTimeout(function() {
+          document.querySelector('.k12-insight').classList.add('visible');
+        }, 600);
+      } else {
+        this.classList.add('incorrect');
+        var fb = document.getElementById('q1-feedback');
+        fb.textContent = '不正確。想想如何讓快取記住「沒有結果」這個事實。';
+        fb.className = 'question-feedback visible incorrect';
+        setTimeout(function() {
+          fb.classList.remove('visible');
+          setTimeout(function() { fb.classList.remove('incorrect'); }, 300);
+        }, 2000);
+      }
+    });
+  });
+})();
+</script>
+
+</body>
+</html>

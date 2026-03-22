@@ -1,0 +1,276 @@
+<!DOCTYPE html>
+<html lang="zh-TW">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Cache Koans — LFU 與 FIFO 淘汰策略</title>
+  <link rel="stylesheet" href="../css/shared.css">
+  <script src="../js/i18n.js"></script>
+</head>
+<body>
+
+<!-- Mobile Gate -->
+<div class="mobile-gate">
+  <div class="gate-icon">&#9776;</div>
+  <div class="gate-text" data-i18n="mobile-gate">
+    此學習路徑需要更寬的視窗。請在較大的螢幕上開啟。
+  </div>
+</div>
+
+<div class="koan-page">
+  <div class="koan-number" data-i18n="k16-number">Koan 16</div>
+  <h1 class="koan-title" data-i18n="k16-title">LFU 與 FIFO 淘汰策略</h1>
+  <p class="koan-zen" data-i18n="k16-zen">LRU 看時間，LFU 看次數。FIFO 只看順序。哪一個最公平？</p>
+
+  <div class="koan-section-title" data-i18n="k16-section-concept">概念</div>
+  <p class="koan-text" data-i18n="k16-text1">LFU（Least Frequently Used）淘汰存取次數最少的項目。它假設：過去被經常使用的資料，未來也可能被使用。</p>
+  <p class="koan-text" data-i18n="k16-text2">FIFO（First In First Out）淘汰最先進入快取的項目，不管它被存取了多少次。簡單、可預測，但可能淘汰仍然有用的資料。</p>
+
+  <div class="koan-section-title" data-i18n="k16-section-interactive">互動模擬</div>
+  <p class="koan-text" data-i18n="k16-text-interactive">快取容量為 4。新增項目並觀察 LFU 和 FIFO 分別會淘汰哪個項目。點擊表格中的項目可以增加其存取次數。</p>
+
+  <div class="koan-interactive">
+    <div style="display:flex; gap:1rem; align-items:center; flex-wrap:wrap; margin-bottom:1rem;">
+      <button class="action-btn" id="btn-mode-lfu" style="border-color:var(--accent-blue);color:var(--accent-blue);" data-i18n="k16-btn-lfu">LFU 模式</button>
+      <button class="action-btn" id="btn-mode-fifo" data-i18n="k16-btn-fifo">FIFO 模式</button>
+      <span class="text-dim" style="font-size:0.8rem;" data-i18n="k16-current-mode">目前模式：</span>
+      <span id="mode-label" style="font-size:0.85rem;color:var(--accent-blue);font-weight:600;">LFU</span>
+    </div>
+
+    <table class="cache-table" id="cache-table">
+      <thead>
+        <tr>
+          <th data-i18n="k16-th-key">鍵</th>
+          <th data-i18n="k16-th-value">值</th>
+          <th data-i18n="k16-th-freq">存取次數</th>
+          <th data-i18n="k16-th-order">插入順序</th>
+          <th data-i18n="k16-th-status">狀態</th>
+        </tr>
+      </thead>
+      <tbody id="cache-tbody"></tbody>
+    </table>
+
+    <div style="display:flex; gap:1rem; align-items:center; flex-wrap:wrap; margin-top:1rem;">
+      <button class="action-btn" id="btn-add-item" data-i18n="k16-btn-add">新增項目</button>
+      <button class="action-btn" id="btn-reset" data-i18n="k16-btn-reset">重置</button>
+    </div>
+
+    <div class="stats-row" style="margin-top:1.5rem;">
+      <div class="stat-item">
+        <div class="stat-value blue" id="stat-total">0</div>
+        <div class="stat-label" data-i18n="k16-stat-total">總新增數</div>
+      </div>
+      <div class="stat-item">
+        <div class="stat-value red" id="stat-evictions">0</div>
+        <div class="stat-label" data-i18n="k16-stat-evictions">淘汰次數</div>
+      </div>
+      <div class="stat-item">
+        <div class="stat-value orange" id="stat-last-evicted">—</div>
+        <div class="stat-label" data-i18n="k16-stat-last-evicted">上次被淘汰</div>
+      </div>
+    </div>
+  </div>
+
+  <div class="koan-section-title" data-i18n="k16-section-question">思考</div>
+  <div class="question-group visible" id="q1">
+    <div class="question-label" data-i18n="k16-q1">什麼時候 FIFO 可能比 LRU 更適合？</div>
+    <div class="question-options">
+      <div class="question-option" data-answer="correct" data-i18n="k16-q1-a1">當存取模式均勻且簡單性更重要時</div>
+      <div class="question-option" data-answer="incorrect" data-i18n="k16-q1-a2">當項目被頻繁存取時</div>
+      <div class="question-option" data-answer="incorrect" data-i18n="k16-q1-a3">永遠不會，LRU 總是更好</div>
+    </div>
+    <div class="question-feedback" id="q1-feedback"></div>
+  </div>
+
+  <div class="k16-insight">
+    <div class="insight-box" id="insight-box">
+      <div class="insight-label" data-i18n="k16-insight-label">洞察</div>
+      <div class="insight-text" data-i18n-html="k16-insight-text">
+        現代快取常使用自適應演算法，如 <code>ARC</code>（Adaptive Replacement Cache）或 <code>W-TinyLFU</code>（用於 Java 的 Caffeine 函式庫）。<br><br>
+        W-TinyLFU 結合了 LRU 和 LFU 的優點：用一個小型的「視窗 LRU」來捕捉新進資料，再用頻率過濾器決定是否提升到主快取。這讓它在各種工作負載下都能表現優異。
+      </div>
+    </div>
+  </div>
+</div>
+
+<script src="../js/progress.js"></script>
+<script src="../js/scroll.js"></script>
+<script>
+(function () {
+  'use strict';
+
+  const CAPACITY = 4;
+  let mode = 'lfu';
+  let cache = [];
+  let insertCounter = 0;
+  let totalAdded = 0;
+  let evictions = 0;
+  let itemId = 0;
+
+  const names = ['user:1', 'user:2', 'product:A', 'session:X', 'config:db', 'token:Z', 'order:99', 'item:5', 'page:home', 'metric:cpu'];
+
+  const tbody = document.getElementById('cache-tbody');
+  const modeLabel = document.getElementById('mode-label');
+  const btnLFU = document.getElementById('btn-mode-lfu');
+  const btnFIFO = document.getElementById('btn-mode-fifo');
+
+  function setMode(m) {
+    mode = m;
+    modeLabel.textContent = m.toUpperCase();
+    btnLFU.style.borderColor = m === 'lfu' ? 'var(--accent-blue)' : '';
+    btnLFU.style.color = m === 'lfu' ? 'var(--accent-blue)' : '';
+    btnFIFO.style.borderColor = m === 'fifo' ? 'var(--accent-blue)' : '';
+    btnFIFO.style.color = m === 'fifo' ? 'var(--accent-blue)' : '';
+    renderTable();
+  }
+
+  btnLFU.addEventListener('click', function() { setMode('lfu'); });
+  btnFIFO.addEventListener('click', function() { setMode('fifo'); });
+
+  function findEvictionTarget() {
+    if (mode === 'fifo') {
+      var oldest = cache[0];
+      cache.forEach(function(item) { if (item.order < oldest.order) oldest = item; });
+      return oldest;
+    } else {
+      var minFreq = Infinity;
+      var target = cache[0];
+      cache.forEach(function(item) {
+        if (item.freq < minFreq || (item.freq === minFreq && item.order < target.order)) {
+          minFreq = item.freq;
+          target = item;
+        }
+      });
+      return target;
+    }
+  }
+
+  function renderTable() {
+    tbody.innerHTML = '';
+    var evictTarget = cache.length >= CAPACITY ? findEvictionTarget() : null;
+    cache.forEach(function(item) {
+      var tr = document.createElement('tr');
+      if (item.isNew) tr.classList.add('new-entry');
+      if (item.justAccessed) tr.classList.add('accessed');
+      var wouldEvict = evictTarget && evictTarget.id === item.id && cache.length >= CAPACITY;
+      if (wouldEvict) tr.classList.add('evicting');
+
+      var statusText = '';
+      if (wouldEvict) statusText = mode === 'lfu' ? '\u2190 LFU \u6dd8\u6c70' : '\u2190 FIFO \u6dd8\u6c70';
+
+      tr.innerHTML =
+        '<td>' + item.key + '</td>' +
+        '<td>' + item.value + '</td>' +
+        '<td>' + item.freq + '</td>' +
+        '<td>#' + item.order + '</td>' +
+        '<td>' + statusText + '</td>';
+      tr.style.cursor = 'pointer';
+      tr.title = 'Click to access';
+      tr.addEventListener('click', function() { accessItem(item.id); });
+      tbody.appendChild(tr);
+    });
+  }
+
+  function accessItem(id) {
+    cache.forEach(function(item) {
+      item.isNew = false;
+      item.justAccessed = false;
+      if (item.id === id) {
+        item.freq++;
+        item.justAccessed = true;
+      }
+    });
+    renderTable();
+    setTimeout(function() {
+      cache.forEach(function(item) { item.justAccessed = false; });
+      renderTable();
+    }, 800);
+  }
+
+  function addItem() {
+    cache.forEach(function(item) { item.isNew = false; item.justAccessed = false; });
+    insertCounter++;
+    totalAdded++;
+    itemId++;
+
+    var key = names[(itemId - 1) % names.length];
+    var newItem = { id: itemId, key: key, value: 'val_' + itemId, freq: 1, order: insertCounter, isNew: true, justAccessed: false };
+
+    if (cache.length >= CAPACITY) {
+      var target = findEvictionTarget();
+      document.getElementById('stat-last-evicted').textContent = target.key;
+      cache = cache.filter(function(item) { return item.id !== target.id; });
+      evictions++;
+    }
+
+    cache.push(newItem);
+    document.getElementById('stat-total').textContent = totalAdded;
+    document.getElementById('stat-evictions').textContent = evictions;
+    renderTable();
+
+    setTimeout(function() {
+      cache.forEach(function(item) { item.isNew = false; });
+      renderTable();
+    }, 800);
+  }
+
+  function resetCache() {
+    cache = [];
+    insertCounter = 0;
+    totalAdded = 0;
+    evictions = 0;
+    itemId = 0;
+    document.getElementById('stat-total').textContent = '0';
+    document.getElementById('stat-evictions').textContent = '0';
+    document.getElementById('stat-last-evicted').textContent = '\u2014';
+    renderTable();
+  }
+
+  document.getElementById('btn-add-item').addEventListener('click', addItem);
+  document.getElementById('btn-reset').addEventListener('click', resetCache);
+
+  // Pre-populate
+  for (var i = 0; i < 3; i++) addItem();
+  if (cache[0]) cache[0].freq = 5;
+  if (cache[1]) cache[1].freq = 2;
+  if (cache[2]) cache[2].freq = 1;
+  totalAdded = 3;
+  document.getElementById('stat-total').textContent = '3';
+  document.getElementById('stat-evictions').textContent = '0';
+  cache.forEach(function(item) { item.isNew = false; });
+  renderTable();
+
+  // --- Question Logic ---
+  var q1 = document.getElementById('q1');
+  var q1Feedback = document.getElementById('q1-feedback');
+  var insightBox = document.querySelector('.k16-insight');
+  var q1Answered = false;
+
+  q1.querySelectorAll('.question-option').forEach(function(opt) {
+    opt.addEventListener('click', function() {
+      if (q1Answered) return;
+      var isCorrect = opt.getAttribute('data-answer') === 'correct';
+      if (isCorrect) {
+        q1Answered = true;
+        opt.classList.add('correct');
+        q1Feedback.textContent = '\u2713 \u6b63\u78ba\uff01\u7576\u5b58\u53d6\u6a21\u5f0f\u5747\u52fb\u6642\uff0cFIFO \u7684\u7c21\u55ae\u6027\u662f\u512a\u52e2\u3002';
+        q1Feedback.classList.add('visible', 'correct');
+        q1.querySelectorAll('.question-option').forEach(function(o) {
+          if (o !== opt) o.classList.add('disabled');
+        });
+        setTimeout(function() { insightBox.classList.add('visible'); }, 600);
+      } else {
+        opt.classList.add('incorrect');
+        q1Feedback.textContent = '\u2717 \u518d\u60f3\u60f3\u2014\u2014\u6bcf\u7a2e\u7b56\u7565\u90fd\u6709\u9069\u5408\u7684\u5834\u666f\u3002';
+        q1Feedback.classList.add('visible', 'incorrect');
+        setTimeout(function() {
+          q1Feedback.classList.remove('visible');
+          setTimeout(function() { q1Feedback.classList.remove('incorrect'); }, 300);
+        }, 2000);
+      }
+    });
+  });
+})();
+</script>
+</body>
+</html>

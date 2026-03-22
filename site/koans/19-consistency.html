@@ -1,0 +1,286 @@
+<!DOCTYPE html>
+<html lang="zh-TW">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Cache Koans — 快取一致性</title>
+  <link rel="stylesheet" href="../css/shared.css">
+  <script src="../js/i18n.js"></script>
+</head>
+<body>
+
+<!-- Mobile Gate -->
+<div class="mobile-gate">
+  <div class="gate-icon">&#9776;</div>
+  <div class="gate-text" data-i18n="mobile-gate">
+    此學習路徑需要更寬的視窗。請在較大的螢幕上開啟。
+  </div>
+</div>
+
+<div class="koan-page">
+  <div class="koan-number" data-i18n="k19-number">Koan 19</div>
+  <h1 class="koan-title" data-i18n="k19-title">快取一致性</h1>
+  <p class="koan-zen" data-i18n="k19-zen">兩個快取副本。一個說是。一個說否。誰在說真話？</p>
+
+  <div class="koan-section-title" data-i18n="k19-section-concept">概念</div>
+  <p class="koan-text" data-i18n="k19-text1">快取一致性是指快取中的資料與原始資料來源（source of truth）之間的同步程度。當資料被更新時，快取可能仍持有舊值。</p>
+  <p class="koan-text" data-i18n="k19-text2">最終一致性 (Eventual Consistency)：給定足夠的時間，所有快取最終會收斂到相同的值。Read-your-writes 一致性：寫入後立即讀取能看到自己的寫入結果。</p>
+
+  <div class="koan-section-title" data-i18n="k19-section-interactive">互動模擬</div>
+  <p class="koan-text" data-i18n="k19-text-interactive">模擬兩個伺服器節點各自有快取，共享一個資料庫。在 Server A 寫入資料，觀察 Server B 如何變得不一致，然後透過失效傳播修復。</p>
+
+  <div class="koan-interactive">
+    <div class="diagram-container">
+      <svg viewBox="0 0 700 320" xmlns="http://www.w3.org/2000/svg" id="consistency-svg">
+        <!-- DB Node (bottom center) -->
+        <g class="svg-node" id="node-db" transform="translate(280, 240)">
+          <rect width="140" height="55" fill="rgba(22,27,34,0.8)" stroke="rgba(255,255,255,0.08)" stroke-width="1.5" rx="8"/>
+          <text x="70" y="22" text-anchor="middle" font-family="var(--font-mono)" font-size="11" fill="#6a7280" data-i18n="k19-diag-db">Database (Source of Truth)</text>
+          <text x="70" y="42" text-anchor="middle" font-family="var(--font-mono)" font-size="13" fill="#a5a5a5" id="db-val">stock = 50</text>
+        </g>
+
+        <!-- Server A (top left) -->
+        <g class="svg-node" id="node-a" transform="translate(40, 30)">
+          <rect width="160" height="80" fill="rgba(22,27,34,0.8)" stroke="rgba(255,255,255,0.08)" stroke-width="1.5" rx="8"/>
+          <text x="80" y="22" text-anchor="middle" font-family="var(--font-mono)" font-size="11" fill="#6a7280" data-i18n="k19-diag-server-a">Server A</text>
+          <text x="80" y="44" text-anchor="middle" font-family="var(--font-mono)" font-size="10" fill="#6a7280" data-i18n="k19-diag-cache-a">Cache:</text>
+          <text x="80" y="64" text-anchor="middle" font-family="var(--font-mono)" font-size="13" id="cache-a-val" fill="#3fb950">stock = 50</text>
+        </g>
+
+        <!-- Server B (top right) -->
+        <g class="svg-node" id="node-b" transform="translate(500, 30)">
+          <rect width="160" height="80" fill="rgba(22,27,34,0.8)" stroke="rgba(255,255,255,0.08)" stroke-width="1.5" rx="8"/>
+          <text x="80" y="22" text-anchor="middle" font-family="var(--font-mono)" font-size="11" fill="#6a7280" data-i18n="k19-diag-server-b">Server B</text>
+          <text x="80" y="44" text-anchor="middle" font-family="var(--font-mono)" font-size="10" fill="#6a7280" data-i18n="k19-diag-cache-b">Cache:</text>
+          <text x="80" y="64" text-anchor="middle" font-family="var(--font-mono)" font-size="13" id="cache-b-val" fill="#3fb950">stock = 50</text>
+        </g>
+
+        <!-- Pub/Sub Channel (middle) -->
+        <g transform="translate(260, 150)">
+          <rect width="180" height="35" fill="rgba(22,27,34,0.5)" stroke="rgba(255,255,255,0.05)" stroke-width="1" rx="6" stroke-dasharray="4,4"/>
+          <text x="90" y="22" text-anchor="middle" font-family="var(--font-mono)" font-size="10" fill="#6a7280" data-i18n="k19-diag-pubsub">Pub/Sub Channel</text>
+        </g>
+
+        <!-- Connection lines -->
+        <line x1="120" y1="110" x2="300" y2="240" stroke="rgba(255,255,255,0.06)" stroke-width="1"/>
+        <line x1="580" y1="110" x2="400" y2="240" stroke="rgba(255,255,255,0.06)" stroke-width="1"/>
+        <line x1="120" y1="110" x2="260" y2="167" stroke="rgba(255,255,255,0.06)" stroke-width="1" stroke-dasharray="3,3"/>
+        <line x1="580" y1="110" x2="440" y2="167" stroke="rgba(255,255,255,0.06)" stroke-width="1" stroke-dasharray="3,3"/>
+
+        <!-- Animated notification -->
+        <circle id="notify-particle" cx="260" cy="167" r="5" fill="#58a6ff" opacity="0" style="transition:all 0.6s ease;"/>
+      </svg>
+    </div>
+
+    <div style="display:flex;gap:1rem;flex-wrap:wrap;margin-top:1rem;">
+      <button class="action-btn" id="btn-write-a" data-i18n="k19-btn-write">Server A: 更新 stock = 30</button>
+      <button class="action-btn" id="btn-read-b" data-i18n="k19-btn-read-b">Server B: 讀取 stock</button>
+      <button class="action-btn" id="btn-propagate" data-i18n="k19-btn-propagate">發送失效通知 (Pub/Sub)</button>
+      <button class="action-btn" id="btn-reset" data-i18n="k19-btn-reset">重置</button>
+    </div>
+
+    <div class="timeline" id="event-timeline">
+      <div class="timeline-step visible done" data-i18n="k19-init-step">初始狀態：DB 和所有快取一致 → stock = 50</div>
+    </div>
+
+    <div class="stats-row" style="margin-top:1rem;">
+      <div class="stat-item">
+        <div class="stat-value" id="stat-db-val" style="color:var(--text-primary);">50</div>
+        <div class="stat-label" data-i18n="k19-stat-db">DB 值</div>
+      </div>
+      <div class="stat-item">
+        <div class="stat-value green" id="stat-cache-a">50</div>
+        <div class="stat-label" data-i18n="k19-stat-cache-a">Server A 快取</div>
+      </div>
+      <div class="stat-item">
+        <div class="stat-value green" id="stat-cache-b">50</div>
+        <div class="stat-label" data-i18n="k19-stat-cache-b">Server B 快取</div>
+      </div>
+      <div class="stat-item">
+        <div class="stat-value green" id="stat-consistent" data-i18n="k19-consistent">一致</div>
+        <div class="stat-label" data-i18n="k19-stat-status">一致性狀態</div>
+      </div>
+    </div>
+  </div>
+
+  <div class="koan-section-title" data-i18n="k19-section-question">思考</div>
+  <div class="question-group visible" id="q1">
+    <div class="question-label" data-i18n="k19-q1">什麼是快取中的「最終一致性」(Eventual Consistency)？</div>
+    <div class="question-options">
+      <div class="question-option" data-answer="correct" data-i18n="k19-q1-a1">給定足夠的時間，所有快取會收斂到相同的值</div>
+      <div class="question-option" data-answer="incorrect" data-i18n="k19-q1-a2">快取始終保持一致</div>
+      <div class="question-option" data-answer="incorrect" data-i18n="k19-q1-a3">一致性是有保證的</div>
+    </div>
+    <div class="question-feedback" id="q1-feedback"></div>
+  </div>
+
+  <div class="k19-insight">
+    <div class="insight-box" id="insight-box">
+      <div class="insight-label" data-i18n="k19-insight-label">洞察</div>
+      <div class="insight-text" data-i18n-html="k19-insight-text">
+        <code>CAP 定理</code>也適用於快取。大多數分散式快取選擇可用性 (Availability) 和分區容忍性 (Partition Tolerance)，而犧牲嚴格一致性。<br><br>
+        常見策略：<br>
+        &bull; <code>Write-through</code>：寫入同時更新快取和 DB<br>
+        &bull; <code>Write-behind</code>：先更新快取，異步寫 DB<br>
+        &bull; <code>Cache invalidation + Pub/Sub</code>：寫入 DB 後廣播失效訊息<br><br>
+        選擇哪種策略取決於你能容忍多長時間的不一致。
+      </div>
+    </div>
+  </div>
+</div>
+
+<script src="../js/progress.js"></script>
+<script src="../js/scroll.js"></script>
+<script>
+(function () {
+  'use strict';
+
+  var dbValue = 50;
+  var cacheA = 50;
+  var cacheB = 50;
+  var written = false;
+
+  var cacheAVal = document.getElementById('cache-a-val');
+  var cacheBVal = document.getElementById('cache-b-val');
+  var dbVal = document.getElementById('db-val');
+  var statDbVal = document.getElementById('stat-db-val');
+  var statCacheA = document.getElementById('stat-cache-a');
+  var statCacheB = document.getElementById('stat-cache-b');
+  var statConsistent = document.getElementById('stat-consistent');
+  var nodeA = document.getElementById('node-a');
+  var nodeB = document.getElementById('node-b');
+  var nodeDb = document.getElementById('node-db');
+  var timeline = document.getElementById('event-timeline');
+  var particle = document.getElementById('notify-particle');
+
+  function addTimelineStep(text, type) {
+    var step = document.createElement('div');
+    step.className = 'timeline-step' + (type ? ' ' + type : '');
+    step.textContent = text;
+    timeline.appendChild(step);
+    setTimeout(function() { step.classList.add('visible'); }, 50);
+  }
+
+  function updateDisplay() {
+    cacheAVal.textContent = 'stock = ' + cacheA;
+    cacheBVal.textContent = 'stock = ' + cacheB;
+    dbVal.textContent = 'stock = ' + dbValue;
+    statDbVal.textContent = dbValue;
+    statCacheA.textContent = cacheA;
+    statCacheB.textContent = cacheB;
+
+    // Check consistency
+    var aOk = cacheA === dbValue;
+    var bOk = cacheB === dbValue;
+
+    cacheAVal.setAttribute('fill', aOk ? '#3fb950' : '#f85149');
+    cacheBVal.setAttribute('fill', bOk ? '#3fb950' : '#f85149');
+    statCacheA.className = 'stat-value ' + (aOk ? 'green' : 'red');
+    statCacheB.className = 'stat-value ' + (bOk ? 'green' : 'red');
+
+    if (aOk && bOk) {
+      statConsistent.textContent = '\u4e00\u81f4';
+      statConsistent.className = 'stat-value green';
+      nodeA.querySelector('rect').setAttribute('stroke', 'rgba(63,185,80,0.4)');
+      nodeB.querySelector('rect').setAttribute('stroke', 'rgba(63,185,80,0.4)');
+    } else {
+      statConsistent.textContent = '\u4e0d\u4e00\u81f4';
+      statConsistent.className = 'stat-value red';
+      if (!aOk) nodeA.querySelector('rect').setAttribute('stroke', 'rgba(248,81,73,0.4)');
+      if (!bOk) nodeB.querySelector('rect').setAttribute('stroke', 'rgba(248,81,73,0.4)');
+      if (aOk) nodeA.querySelector('rect').setAttribute('stroke', 'rgba(63,185,80,0.4)');
+      if (bOk) nodeB.querySelector('rect').setAttribute('stroke', 'rgba(63,185,80,0.4)');
+    }
+  }
+
+  // Write on Server A
+  document.getElementById('btn-write-a').addEventListener('click', function() {
+    if (written) return;
+    written = true;
+    dbValue = 30;
+    cacheA = 30;
+    // B is still stale
+
+    nodeA.classList.add('active');
+    addTimelineStep('Server A \u5beb\u5165 stock = 30\u3002DB \u5df2\u66f4\u65b0\uff0cServer A \u5feb\u53d6\u5df2\u66f4\u65b0\u3002', 'active');
+    addTimelineStep('Server B \u7684\u5feb\u53d6\u4ecd\u7136\u662f stock = 50 \u2014\u2014 \u904e\u6642\u4e86\uff01', 'error');
+
+    updateDisplay();
+    setTimeout(function() { nodeA.classList.remove('active'); }, 1000);
+  });
+
+  // Read from Server B (shows stale data)
+  document.getElementById('btn-read-b').addEventListener('click', function() {
+    nodeB.classList.add('active');
+    var readVal = cacheB;
+    addTimelineStep('Server B \u8b80\u53d6 stock = ' + readVal + (readVal !== dbValue ? ' (\u904e\u6642\u8cc7\u6599\uff01DB \u662f ' + dbValue + ')' : ' (\u6b63\u78ba)'), readVal !== dbValue ? 'error' : 'done');
+    setTimeout(function() { nodeB.classList.remove('active'); }, 1000);
+  });
+
+  // Propagate invalidation
+  document.getElementById('btn-propagate').addEventListener('click', function() {
+    // Animate particle
+    particle.setAttribute('opacity', '1');
+    particle.setAttribute('cx', '260');
+    setTimeout(function() {
+      particle.setAttribute('cx', '440');
+    }, 100);
+    setTimeout(function() {
+      particle.setAttribute('opacity', '0');
+      cacheB = dbValue;
+      updateDisplay();
+      addTimelineStep('Pub/Sub \u5931\u6548\u901a\u77e5\u5df2\u50b3\u905e\u3002Server B \u91cd\u65b0\u8b80\u53d6 DB\uff1astock = ' + dbValue, 'done');
+      addTimelineStep('\u6240\u6709\u5feb\u53d6\u518d\u6b21\u4e00\u81f4\u3002', 'done');
+    }, 800);
+  });
+
+  // Reset
+  document.getElementById('btn-reset').addEventListener('click', function() {
+    dbValue = 50;
+    cacheA = 50;
+    cacheB = 50;
+    written = false;
+    timeline.innerHTML = '';
+    var initStep = document.createElement('div');
+    initStep.className = 'timeline-step visible done';
+    initStep.textContent = '\u521d\u59cb\u72c0\u614b\uff1aDB \u548c\u6240\u6709\u5feb\u53d6\u4e00\u81f4 \u2192 stock = 50';
+    timeline.appendChild(initStep);
+    nodeA.querySelector('rect').setAttribute('stroke', 'rgba(255,255,255,0.08)');
+    nodeB.querySelector('rect').setAttribute('stroke', 'rgba(255,255,255,0.08)');
+    updateDisplay();
+  });
+
+  // --- Question Logic ---
+  var q1 = document.getElementById('q1');
+  var q1Feedback = document.getElementById('q1-feedback');
+  var insightBox = document.querySelector('.k19-insight');
+  var q1Answered = false;
+
+  q1.querySelectorAll('.question-option').forEach(function(opt) {
+    opt.addEventListener('click', function() {
+      if (q1Answered) return;
+      var isCorrect = opt.getAttribute('data-answer') === 'correct';
+      if (isCorrect) {
+        q1Answered = true;
+        opt.classList.add('correct');
+        q1Feedback.textContent = '\u2713 \u6b63\u78ba\uff01\u6700\u7d42\u4e00\u81f4\u6027\u610f\u5473\u8457\u7d66\u5b9a\u8db3\u5920\u6642\u9593\uff0c\u6240\u6709\u526f\u672c\u6703\u6536\u6582\u3002';
+        q1Feedback.classList.add('visible', 'correct');
+        q1.querySelectorAll('.question-option').forEach(function(o) {
+          if (o !== opt) o.classList.add('disabled');
+        });
+        setTimeout(function() { insightBox.classList.add('visible'); }, 600);
+      } else {
+        opt.classList.add('incorrect');
+        q1Feedback.textContent = '\u2717 \u518d\u60f3\u60f3\u2014\u2014\u300c\u6700\u7d42\u300d\u662f\u95dc\u9375\u5b57\u3002';
+        q1Feedback.classList.add('visible', 'incorrect');
+        setTimeout(function() {
+          q1Feedback.classList.remove('visible');
+          setTimeout(function() { q1Feedback.classList.remove('incorrect'); }, 300);
+        }, 2000);
+      }
+    });
+  });
+})();
+</script>
+</body>
+</html>

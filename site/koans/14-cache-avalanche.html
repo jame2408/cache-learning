@@ -1,0 +1,270 @@
+<!DOCTYPE html>
+<html lang="zh-TW">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Cache Koans — 快取雪崩</title>
+  <link rel="stylesheet" href="../css/shared.css">
+  <script src="../js/i18n.js"></script>
+</head>
+<body>
+
+<!-- Mobile Gate -->
+<div class="mobile-gate">
+  <div class="gate-icon">&#9776;</div>
+  <div class="gate-text" data-i18n="mobile-gate">
+    此學習路徑需要更寬的視窗。請在較大的螢幕上開啟。
+  </div>
+</div>
+
+<div class="koan-page">
+  <div class="koan-number" data-i18n="k14-number">Koan 14</div>
+  <h1 class="koan-title" data-i18n="k14-title">快取雪崩</h1>
+  <p class="koan-zen" data-i18n="k14-zen">山上的雪花各自無害。但當它們一起落下——</p>
+
+  <div class="koan-section-title" data-i18n="k14-section-explain">理解</div>
+  <p class="koan-text" data-i18n="k14-explain1">快取雪崩（Cache Avalanche）發生在大量快取鍵在同一時間過期。例如系統啟動時一次性載入所有資料並設定相同的 TTL，當 TTL 到期時，所有 key 同時失效，全部請求湧向資料庫。</p>
+  <p class="koan-text" data-i18n="k14-explain2">這就像雪崩一樣——每一片雪花都微不足道，但同時落下就會摧毀一切。</p>
+
+  <div class="koan-section-title" data-i18n="k14-section-sim">模擬</div>
+  <p class="koan-text" data-i18n="k14-sim-desc">觀察固定 TTL 與加入隨機抖動（jitter）的差別。</p>
+
+  <div class="koan-interactive">
+    <!-- Timeline showing keys expiring -->
+    <div style="font-size:0.8rem;color:var(--text-dim);margin-bottom:0.5rem" data-i18n="k14-timeline-label">快取 Key 過期時間軸</div>
+
+    <div style="position:relative;height:120px;background:rgba(255,255,255,0.02);border-radius:8px;margin-bottom:1rem;overflow:hidden" id="av-timeline">
+      <div style="position:absolute;bottom:0;left:0;right:0;height:1px;background:rgba(255,255,255,0.1)"></div>
+      <!-- Time markers -->
+      <div style="position:absolute;bottom:4px;left:2%;font-size:0.65rem;color:var(--text-dim)">0s</div>
+      <div style="position:absolute;bottom:4px;left:25%;font-size:0.65rem;color:var(--text-dim)">100s</div>
+      <div style="position:absolute;bottom:4px;left:50%;font-size:0.65rem;color:var(--text-dim)">200s</div>
+      <div style="position:absolute;bottom:4px;left:75%;font-size:0.65rem;color:var(--text-dim)">300s</div>
+      <div style="position:absolute;bottom:4px;left:98%;font-size:0.65rem;color:var(--text-dim);text-align:right">400s</div>
+      <!-- Key expiration bars will be added dynamically -->
+      <div id="av-bars"></div>
+    </div>
+
+    <div class="stats-row">
+      <div class="stat-item">
+        <div class="stat-value blue" id="av-stat-keys">50</div>
+        <div class="stat-label" data-i18n="k14-stat-keys">快取 Keys</div>
+      </div>
+      <div class="stat-item">
+        <div class="stat-value orange" id="av-stat-mode" data-i18n="k14-stat-mode-fixed">固定 TTL</div>
+        <div class="stat-label" data-i18n="k14-stat-mode-label">模式</div>
+      </div>
+      <div class="stat-item">
+        <div class="stat-value red" id="av-stat-peak">0%</div>
+        <div class="stat-label" data-i18n="k14-stat-peak">尖峰 DB 負載</div>
+      </div>
+    </div>
+
+    <div style="margin-bottom:0.5rem">
+      <span style="font-size:0.8rem;color:var(--text-dim)" data-i18n="k14-db-load-label">資料庫負載</span>
+    </div>
+    <div class="load-meter">
+      <div class="load-meter-fill" id="av-load-bar" style="width:5%"></div>
+    </div>
+
+    <!-- Simulation playback -->
+    <div style="margin-top:1rem;font-size:0.8rem;color:var(--text-secondary)">
+      <span data-i18n="k14-time-label">模擬時間: </span>
+      <span id="av-time" style="color:var(--accent-blue)">0s</span>
+    </div>
+
+    <div style="margin-top:1.5rem;display:flex;gap:1rem;flex-wrap:wrap">
+      <button class="action-btn" id="btn-av-fixed" data-i18n="k14-btn-fixed">模擬固定 TTL (300s)</button>
+      <button class="action-btn" id="btn-av-jitter" data-i18n="k14-btn-jitter">加入隨機抖動 (±60s)</button>
+      <button class="action-btn" id="btn-av-reset" data-i18n="k14-btn-reset">重設</button>
+    </div>
+  </div>
+
+  <div class="koan-section-title" data-i18n="k14-section-question">思考</div>
+
+  <div class="question-group visible" id="q1">
+    <div class="question-label" data-i18n="k14-q1">如何防止快取雪崩？</div>
+    <div class="question-options">
+      <div class="question-option" data-answer="correct" data-i18n="k14-q1-a">在 TTL 上加入隨機抖動（jitter）</div>
+      <div class="question-option" data-answer="wrong" data-i18n="k14-q1-b">使用更短的 TTL</div>
+      <div class="question-option" data-answer="wrong" data-i18n="k14-q1-c">停用 TTL</div>
+    </div>
+    <div class="question-feedback" id="q1-feedback"></div>
+  </div>
+
+  <div class="k14-insight">
+    <div class="insight-box">
+      <div class="insight-label" data-i18n="k14-insight-label">洞察</div>
+      <div class="insight-text" data-i18n-html="k14-insight-text">除了隨機抖動，還可以用<code>多層快取</code>（L1 本地 + L2 分散式，各有不同 TTL）、<code>熔斷器</code>（當 DB 負載過高時直接回傳降級結果）、以及<code>優雅降級</code>（回傳略微過時但可用的資料，而非完全錯誤）。最簡單但最有效的做法：<code>TTL = base + random(0, jitter)</code>。</div>
+    </div>
+  </div>
+</div>
+
+<script src="../js/progress.js"></script>
+<script src="../js/scroll.js"></script>
+<script>
+(function() {
+  'use strict';
+
+  var barsContainer = document.getElementById('av-bars');
+  var loadBar = document.getElementById('av-load-bar');
+  var statPeak = document.getElementById('av-stat-peak');
+  var statMode = document.getElementById('av-stat-mode');
+  var timeDisplay = document.getElementById('av-time');
+
+  var NUM_KEYS = 50;
+  var animFrame = null;
+
+  function setDbLoad(pct) {
+    loadBar.style.width = pct + '%';
+    loadBar.className = 'load-meter-fill';
+    if (pct > 80) loadBar.classList.add('danger');
+    else if (pct > 50) loadBar.classList.add('warning');
+  }
+
+  function clearBars() {
+    barsContainer.innerHTML = '';
+  }
+
+  function createBars(expirations) {
+    clearBars();
+    var maxTime = 400;
+    expirations.forEach(function(t, i) {
+      var bar = document.createElement('div');
+      var leftPct = (t / maxTime) * 100;
+      var row = i % 6;
+      bar.style.cssText = 'position:absolute;left:' + leftPct + '%;bottom:' + (18 + row * 15) + 'px;' +
+        'width:3px;height:12px;border-radius:2px;background:var(--accent-blue);opacity:0.6;' +
+        'transition:all 0.3s ease;';
+      bar.dataset.time = t;
+      bar.className = 'av-bar';
+      barsContainer.appendChild(bar);
+    });
+  }
+
+  function simulateTimeline(expirations) {
+    if (animFrame) cancelAnimationFrame(animFrame);
+    var bars = barsContainer.querySelectorAll('.av-bar');
+    var maxTime = 400;
+    var simTime = 0;
+    var speed = 2; // seconds per frame tick
+    var peakLoad = 0;
+
+    function tick() {
+      simTime += speed;
+      if (simTime > maxTime) {
+        timeDisplay.textContent = maxTime + 's';
+        return;
+      }
+      timeDisplay.textContent = Math.floor(simTime) + 's';
+
+      // Count expirations in current window (±5s)
+      var expiring = 0;
+      bars.forEach(function(bar) {
+        var t = parseFloat(bar.dataset.time);
+        if (Math.abs(t - simTime) < 5) {
+          bar.style.background = 'var(--accent-red)';
+          bar.style.opacity = '1';
+          bar.style.height = '16px';
+          expiring++;
+        } else if (t < simTime) {
+          bar.style.background = 'var(--text-dim)';
+          bar.style.opacity = '0.3';
+        }
+      });
+
+      var load = Math.min(98, 5 + expiring * 12);
+      if (load > peakLoad) {
+        peakLoad = load;
+        statPeak.textContent = peakLoad + '%';
+      }
+      setDbLoad(load);
+
+      animFrame = requestAnimationFrame(tick);
+    }
+
+    animFrame = requestAnimationFrame(tick);
+  }
+
+  function runFixed() {
+    resetSim();
+    document.getElementById('btn-av-fixed').classList.add('done');
+    statMode.textContent = '固定 TTL';
+    statMode.setAttribute('data-i18n', 'k14-stat-mode-fixed');
+
+    // All keys expire at exactly 300s
+    var expirations = [];
+    for (var i = 0; i < NUM_KEYS; i++) {
+      expirations.push(300);
+    }
+    createBars(expirations);
+    setTimeout(function() { simulateTimeline(expirations); }, 500);
+  }
+
+  function runJitter() {
+    resetSim();
+    document.getElementById('btn-av-jitter').classList.add('done');
+    statMode.textContent = 'TTL + 抖動';
+    statMode.setAttribute('data-i18n', 'k14-stat-mode-jitter');
+
+    // Keys expire at 300 ± 60s (jitter)
+    var expirations = [];
+    for (var i = 0; i < NUM_KEYS; i++) {
+      var jitter = (Math.random() - 0.5) * 120; // ±60s
+      expirations.push(Math.max(50, 300 + jitter));
+    }
+    expirations.sort(function(a, b) { return a - b; });
+    createBars(expirations);
+    setTimeout(function() { simulateTimeline(expirations); }, 500);
+  }
+
+  function resetSim() {
+    if (animFrame) cancelAnimationFrame(animFrame);
+    clearBars();
+    setDbLoad(5);
+    statPeak.textContent = '0%';
+    timeDisplay.textContent = '0s';
+    document.getElementById('btn-av-fixed').classList.remove('done');
+    document.getElementById('btn-av-jitter').classList.remove('done');
+  }
+
+  document.getElementById('btn-av-fixed').addEventListener('click', runFixed);
+  document.getElementById('btn-av-jitter').addEventListener('click', runJitter);
+  document.getElementById('btn-av-reset').addEventListener('click', resetSim);
+
+  // Questions
+  var q1Answered = false;
+  document.querySelectorAll('#q1 .question-option').forEach(function(opt) {
+    opt.addEventListener('click', function() {
+      if (q1Answered) return;
+      var isCorrect = this.dataset.answer === 'correct';
+      if (isCorrect) {
+        q1Answered = true;
+        this.classList.add('correct');
+        var fb = document.getElementById('q1-feedback');
+        fb.textContent = '正確！隨機抖動將過期時間分散，避免同時大量失效。';
+        fb.className = 'question-feedback visible correct';
+        var self = this;
+        document.querySelectorAll('#q1 .question-option').forEach(function(o) {
+          if (o !== self) o.classList.add('disabled');
+        });
+        setTimeout(function() {
+          document.querySelector('.k14-insight').classList.add('visible');
+        }, 600);
+      } else {
+        this.classList.add('incorrect');
+        var fb = document.getElementById('q1-feedback');
+        fb.textContent = '不正確。問題出在過期時間太集中，而非 TTL 長短。';
+        fb.className = 'question-feedback visible incorrect';
+        setTimeout(function() {
+          fb.classList.remove('visible');
+          setTimeout(function() { fb.classList.remove('incorrect'); }, 300);
+        }, 2000);
+      }
+    });
+  });
+})();
+</script>
+
+</body>
+</html>

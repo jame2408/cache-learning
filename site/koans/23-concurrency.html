@@ -1,0 +1,250 @@
+<!DOCTYPE html>
+<html lang="zh-TW">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Cache Koan 23 - Cache Concurrency</title>
+  <link rel="stylesheet" href="../css/shared.css">
+  <script src="../js/i18n.js"></script>
+</head>
+<body>
+
+<div class="mobile-gate">
+  <div class="gate-icon">&#9776;</div>
+  <div class="gate-text" data-i18n="mobile-gate">此學習路徑需要更寬的視窗。請在較大的螢幕上開啟。</div>
+</div>
+
+<div class="koan-page">
+  <div class="koan-number" data-i18n="k23-number">Koan 23</div>
+  <h1 class="koan-title" data-i18n="k23-title">快取並發</h1>
+  <p class="koan-zen" data-i18n="k23-zen">「兩個執行緒同時讀寫同一個快取鍵。它們都認為自己是對的。」</p>
+
+  <h2 class="koan-section-title" data-i18n="k23-section-explain">理解</h2>
+  <p class="koan-text" data-i18n="k23-explain">當多個執行緒或程序同時對同一個快取鍵進行讀取-修改-寫入操作時，就會產生競態條件（Race Condition）。常見問題包括：雙重讀取（Double Read）、遺失更新（Lost Update）、過時讀取（Stale Read）。解決方案包括 CAS（Compare-And-Swap）、分散式鎖和版本控制。</p>
+
+  <h2 class="koan-section-title" data-i18n="k23-section-interactive">競態條件時間線</h2>
+  <p class="koan-text" data-i18n="k23-interactive-desc">觀察兩個並發執行緒對同一個鍵的讀寫操作。先看問題發生，再看解決方案。</p>
+
+  <div class="koan-interactive">
+    <div class="stats-row" style="margin-bottom:1.5rem">
+      <div class="stat-item">
+        <div class="stat-value blue" id="stat-key">count = 10</div>
+        <div class="stat-label" data-i18n="k23-stat-key">快取鍵值</div>
+      </div>
+      <div class="stat-item">
+        <div class="stat-value" id="stat-expected">--</div>
+        <div class="stat-label" data-i18n="k23-stat-expected">預期結果</div>
+      </div>
+      <div class="stat-item">
+        <div class="stat-value" id="stat-actual">--</div>
+        <div class="stat-label" data-i18n="k23-stat-actual">實際結果</div>
+      </div>
+    </div>
+
+    <!-- Race condition timeline -->
+    <div style="display:grid;grid-template-columns:80px 1fr 1fr;gap:0.5rem;font-size:0.8rem;margin-bottom:1.5rem">
+      <div style="color:var(--text-dim);font-weight:600" data-i18n="k23-col-time">時間</div>
+      <div style="color:var(--accent-blue);font-weight:600" data-i18n="k23-col-thread-a">執行緒 A</div>
+      <div style="color:var(--accent-purple);font-weight:600" data-i18n="k23-col-thread-b">執行緒 B</div>
+    </div>
+    <div id="timeline-container">
+      <div class="timeline-row" style="display:grid;grid-template-columns:80px 1fr 1fr;gap:0.5rem;font-size:0.78rem;padding:0.4rem 0;border-bottom:1px solid rgba(255,255,255,0.03);opacity:0;transition:opacity 0.4s ease" data-step="0">
+        <div style="color:var(--text-dim)">T1</div>
+        <div style="color:var(--accent-blue)" data-i18n="k23-t1-a">READ count = 10</div>
+        <div style="color:var(--text-dim)">-</div>
+      </div>
+      <div class="timeline-row" style="display:grid;grid-template-columns:80px 1fr 1fr;gap:0.5rem;font-size:0.78rem;padding:0.4rem 0;border-bottom:1px solid rgba(255,255,255,0.03);opacity:0;transition:opacity 0.4s ease" data-step="1">
+        <div style="color:var(--text-dim)">T2</div>
+        <div style="color:var(--text-dim)">-</div>
+        <div style="color:var(--accent-purple)" data-i18n="k23-t2-b">READ count = 10</div>
+      </div>
+      <div class="timeline-row" style="display:grid;grid-template-columns:80px 1fr 1fr;gap:0.5rem;font-size:0.78rem;padding:0.4rem 0;border-bottom:1px solid rgba(255,255,255,0.03);opacity:0;transition:opacity 0.4s ease" data-step="2">
+        <div style="color:var(--text-dim)">T3</div>
+        <div style="color:var(--accent-blue)" data-i18n="k23-t3-a">WRITE count = 11</div>
+        <div style="color:var(--text-dim)">-</div>
+      </div>
+      <div class="timeline-row" style="display:grid;grid-template-columns:80px 1fr 1fr;gap:0.5rem;font-size:0.78rem;padding:0.4rem 0;border-bottom:1px solid rgba(255,255,255,0.03);opacity:0;transition:opacity 0.4s ease" data-step="3">
+        <div style="color:var(--text-dim)">T4</div>
+        <div style="color:var(--text-dim)">-</div>
+        <div style="color:var(--accent-purple)" data-i18n="k23-t4-b">WRITE count = 11 &#x26A0;</div>
+      </div>
+      <div class="timeline-row" style="display:grid;grid-template-columns:80px 1fr 1fr;gap:0.5rem;font-size:0.78rem;padding:0.4rem 0;opacity:0;transition:opacity 0.4s ease" data-step="4">
+        <div style="color:var(--text-dim)">T5</div>
+        <div colspan="2" style="color:var(--accent-red);grid-column:span 2" data-i18n="k23-t5-result">遺失更新！count 應為 12，但實際是 11。</div>
+      </div>
+    </div>
+
+    <!-- CAS timeline -->
+    <div id="cas-timeline" class="hidden" style="margin-top:1.5rem">
+      <div style="font-size:0.85rem;color:var(--accent-green);font-weight:600;margin-bottom:0.75rem" data-i18n="k23-cas-title">CAS (Compare-And-Swap) 解決方案</div>
+      <div id="cas-container">
+        <div class="timeline-row" style="display:grid;grid-template-columns:80px 1fr 1fr;gap:0.5rem;font-size:0.78rem;padding:0.4rem 0;border-bottom:1px solid rgba(255,255,255,0.03);opacity:0;transition:opacity 0.4s ease" data-cas="0">
+          <div style="color:var(--text-dim)">T1</div>
+          <div style="color:var(--accent-blue)" data-i18n="k23-cas-t1-a">READ count=10, ver=1</div>
+          <div style="color:var(--text-dim)">-</div>
+        </div>
+        <div class="timeline-row" style="display:grid;grid-template-columns:80px 1fr 1fr;gap:0.5rem;font-size:0.78rem;padding:0.4rem 0;border-bottom:1px solid rgba(255,255,255,0.03);opacity:0;transition:opacity 0.4s ease" data-cas="1">
+          <div style="color:var(--text-dim)">T2</div>
+          <div style="color:var(--text-dim)">-</div>
+          <div style="color:var(--accent-purple)" data-i18n="k23-cas-t2-b">READ count=10, ver=1</div>
+        </div>
+        <div class="timeline-row" style="display:grid;grid-template-columns:80px 1fr 1fr;gap:0.5rem;font-size:0.78rem;padding:0.4rem 0;border-bottom:1px solid rgba(255,255,255,0.03);opacity:0;transition:opacity 0.4s ease" data-cas="2">
+          <div style="color:var(--text-dim)">T3</div>
+          <div style="color:var(--accent-blue)" data-i18n="k23-cas-t3-a">CAS(ver=1): count=11 &#x2713;</div>
+          <div style="color:var(--text-dim)">-</div>
+        </div>
+        <div class="timeline-row" style="display:grid;grid-template-columns:80px 1fr 1fr;gap:0.5rem;font-size:0.78rem;padding:0.4rem 0;border-bottom:1px solid rgba(255,255,255,0.03);opacity:0;transition:opacity 0.4s ease" data-cas="3">
+          <div style="color:var(--text-dim)">T4</div>
+          <div style="color:var(--text-dim)">-</div>
+          <div style="color:var(--accent-orange)" data-i18n="k23-cas-t4-b">CAS(ver=1): FAIL! ver now 2</div>
+        </div>
+        <div class="timeline-row" style="display:grid;grid-template-columns:80px 1fr 1fr;gap:0.5rem;font-size:0.78rem;padding:0.4rem 0;border-bottom:1px solid rgba(255,255,255,0.03);opacity:0;transition:opacity 0.4s ease" data-cas="4">
+          <div style="color:var(--text-dim)">T5</div>
+          <div style="color:var(--text-dim)">-</div>
+          <div style="color:var(--accent-purple)" data-i18n="k23-cas-t5-b">RETRY: READ count=11, ver=2</div>
+        </div>
+        <div class="timeline-row" style="display:grid;grid-template-columns:80px 1fr 1fr;gap:0.5rem;font-size:0.78rem;padding:0.4rem 0;opacity:0;transition:opacity 0.4s ease" data-cas="5">
+          <div style="color:var(--text-dim)">T6</div>
+          <div style="color:var(--text-dim)">-</div>
+          <div style="color:var(--accent-green)" data-i18n="k23-cas-t6-b">CAS(ver=2): count=12 &#x2713;</div>
+        </div>
+      </div>
+    </div>
+
+    <div style="margin-top:1.5rem;display:flex;gap:1rem;flex-wrap:wrap">
+      <button class="action-btn" id="btn-race" data-i18n="k23-btn-race">播放競態條件</button>
+      <button class="action-btn" id="btn-cas" data-i18n="k23-btn-cas">播放 CAS 解決</button>
+      <button class="action-btn" id="btn-reset" data-i18n="k23-btn-reset">重設</button>
+    </div>
+  </div>
+
+  <h2 class="koan-section-title" data-i18n="k23-section-question">思考</h2>
+  <div class="question-group visible" id="q1">
+    <div class="question-label" data-i18n="k23-q1">CAS 在快取並發中代表什麼？</div>
+    <div class="question-options">
+      <div class="question-option" data-answer="correct" data-i18n="k23-q1-a">Compare-And-Swap</div>
+      <div class="question-option" data-answer="wrong" data-i18n="k23-q1-b">Cache-Aside Strategy</div>
+      <div class="question-option" data-answer="wrong" data-i18n="k23-q1-c">Concurrent Access System</div>
+    </div>
+    <div class="question-feedback" id="q1-feedback"></div>
+  </div>
+
+  <div class="k23-insight">
+    <div class="insight-box">
+      <div class="insight-label" data-i18n="k23-insight-label">洞察</div>
+      <div class="insight-text" data-i18n-html="k23-insight-text">Redis 透過 <code>WATCH</code>/<code>MULTI</code>/<code>EXEC</code> 支援 CAS 操作。Memcached 內建原生的 CAS 支援。程序內快取可使用語言級別的鎖（如 Java 的 <code>ConcurrentHashMap</code>、Go 的 <code>sync.Mutex</code>）。<br><br>選擇正確的並發控制策略取決於你的一致性需求和性能預算。</div>
+    </div>
+  </div>
+</div>
+
+<script src="../js/progress.js"></script>
+<script src="../js/scroll.js"></script>
+<script>
+(function () {
+  'use strict';
+
+  const statKey = document.getElementById('stat-key');
+  const statExpected = document.getElementById('stat-expected');
+  const statActual = document.getElementById('stat-actual');
+  let animTimers = [];
+
+  function clearTimers() {
+    animTimers.forEach(t => clearTimeout(t));
+    animTimers = [];
+  }
+
+  function resetAll() {
+    clearTimers();
+    statKey.textContent = 'count = 10';
+    statKey.className = 'stat-value blue';
+    statExpected.textContent = '--';
+    statExpected.className = 'stat-value';
+    statActual.textContent = '--';
+    statActual.className = 'stat-value';
+    document.querySelectorAll('.timeline-row').forEach(r => r.style.opacity = '0');
+    document.getElementById('cas-timeline').classList.add('hidden');
+    document.querySelectorAll('.action-btn').forEach(b => b.classList.remove('done'));
+  }
+
+  function playRace() {
+    resetAll();
+    document.getElementById('btn-race').classList.add('done');
+    const rows = document.querySelectorAll('#timeline-container .timeline-row');
+    rows.forEach((row, i) => {
+      const t = setTimeout(() => {
+        row.style.opacity = '1';
+        // Update stat display
+        if (i === 0) statKey.textContent = 'count = 10';
+        if (i === 2) { statKey.textContent = 'count = 11'; }
+        if (i === 3) { statKey.textContent = 'count = 11'; }
+        if (i === 4) {
+          statExpected.textContent = '12';
+          statExpected.className = 'stat-value green';
+          statActual.textContent = '11';
+          statActual.className = 'stat-value red';
+        }
+      }, (i + 1) * 800);
+      animTimers.push(t);
+    });
+  }
+
+  function playCAS() {
+    resetAll();
+    document.getElementById('btn-cas').classList.add('done');
+    document.getElementById('cas-timeline').classList.remove('hidden');
+    const rows = document.querySelectorAll('#cas-container .timeline-row');
+    rows.forEach((row, i) => {
+      const t = setTimeout(() => {
+        row.style.opacity = '1';
+        if (i === 0) statKey.textContent = 'count=10, ver=1';
+        if (i === 2) { statKey.textContent = 'count=11, ver=2'; }
+        if (i === 5) {
+          statKey.textContent = 'count=12, ver=3';
+          statExpected.textContent = '12';
+          statExpected.className = 'stat-value green';
+          statActual.textContent = '12';
+          statActual.className = 'stat-value green';
+        }
+      }, (i + 1) * 800);
+      animTimers.push(t);
+    });
+  }
+
+  document.getElementById('btn-race').addEventListener('click', playRace);
+  document.getElementById('btn-cas').addEventListener('click', playCAS);
+  document.getElementById('btn-reset').addEventListener('click', resetAll);
+
+  // --- Question ---
+  let q1Answered = false;
+  document.querySelectorAll('#q1 .question-option').forEach(opt => {
+    opt.addEventListener('click', () => {
+      if (q1Answered) return;
+      const isCorrect = opt.getAttribute('data-answer') === 'correct';
+      if (isCorrect) {
+        q1Answered = true;
+        opt.classList.add('correct');
+        const fb = document.getElementById('q1-feedback');
+        fb.textContent = '\u2713 \u6B63\u78BA\uFF01CAS \u662F Compare-And-Swap\uFF0C\u900F\u904E\u7248\u672C\u6BD4\u5C0D\u78BA\u4FDD\u539F\u5B50\u66F4\u65B0\u3002';
+        fb.classList.add('visible', 'correct');
+        document.querySelectorAll('#q1 .question-option').forEach(o => {
+          if (o !== opt) o.classList.add('disabled');
+        });
+        setTimeout(() => {
+          document.querySelector('.k23-insight').classList.add('visible');
+        }, 600);
+      } else {
+        opt.classList.add('incorrect');
+        const fb = document.getElementById('q1-feedback');
+        fb.textContent = '\u2717 \u4E0D\u5C0D\u3002CAS \u662F\u4E00\u7A2E\u4E26\u767C\u63A7\u5236\u6A5F\u5236\u3002';
+        fb.classList.add('visible', 'incorrect');
+        setTimeout(() => {
+          fb.classList.remove('visible');
+          setTimeout(() => fb.classList.remove('incorrect'), 300);
+        }, 2000);
+      }
+    });
+  });
+})();
+</script>
+</body>
+</html>

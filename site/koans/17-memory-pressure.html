@@ -1,0 +1,246 @@
+<!DOCTYPE html>
+<html lang="zh-TW">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Cache Koans — 記憶體壓力與快取大小</title>
+  <link rel="stylesheet" href="../css/shared.css">
+  <script src="../js/i18n.js"></script>
+</head>
+<body>
+
+<!-- Mobile Gate -->
+<div class="mobile-gate">
+  <div class="gate-icon">&#9776;</div>
+  <div class="gate-text" data-i18n="mobile-gate">
+    此學習路徑需要更寬的視窗。請在較大的螢幕上開啟。
+  </div>
+</div>
+
+<div class="koan-page">
+  <div class="koan-number" data-i18n="k17-number">Koan 17</div>
+  <h1 class="koan-title" data-i18n="k17-title">記憶體壓力與快取大小</h1>
+  <p class="koan-zen" data-i18n="k17-zen">弟子想把整個資料庫放進快取。師父問：「那快取和資料庫有什麼區別？」</p>
+
+  <div class="koan-section-title" data-i18n="k17-section-concept">概念</div>
+  <p class="koan-text" data-i18n="k17-text1">快取使用記憶體。分配太多記憶體給快取，其他行程就會挨餓；分配太少，命中率低下。必須妥善監控和規劃大小。</p>
+  <p class="koan-text" data-i18n="k17-text2">快取大小的回報遞減效應：當快取已覆蓋大部分「工作集」(working set) 時，繼續增大快取帶來的命中率提升會越來越小，但記憶體成本持續增加。</p>
+
+  <div class="koan-section-title" data-i18n="k17-section-interactive">互動模擬</div>
+  <p class="koan-text" data-i18n="k17-text-interactive">拖動滑桿調整快取大小，觀察命中率和系統記憶體壓力的變化。注意回報遞減效應。</p>
+
+  <div class="koan-interactive">
+    <div class="slider-group">
+      <div class="slider-label">
+        <span data-i18n="k17-slider-label">快取大小分配</span>
+        <span id="cache-size-display">256 MB</span>
+      </div>
+      <input type="range" id="cache-size-slider" min="0" max="100" value="25">
+    </div>
+
+    <div style="display:flex;gap:2rem;margin-top:1.5rem;flex-wrap:wrap;">
+      <div style="flex:1;min-width:200px;">
+        <div style="font-size:0.75rem;color:var(--text-dim);text-transform:uppercase;letter-spacing:1px;margin-bottom:0.5rem;" data-i18n="k17-label-hitrate">命中率</div>
+        <div style="font-size:2.5rem;font-weight:700;margin-bottom:0.5rem;" id="hitrate-display" class="text-green">62%</div>
+        <div class="load-meter">
+          <div class="load-meter-fill" id="hitrate-bar" style="width:62%;background:var(--accent-green);"></div>
+        </div>
+      </div>
+      <div style="flex:1;min-width:200px;">
+        <div style="font-size:0.75rem;color:var(--text-dim);text-transform:uppercase;letter-spacing:1px;margin-bottom:0.5rem;" data-i18n="k17-label-memory">系統記憶體壓力</div>
+        <div style="font-size:2.5rem;font-weight:700;margin-bottom:0.5rem;" id="memory-display" class="text-green">25%</div>
+        <div class="load-meter">
+          <div class="load-meter-fill" id="memory-bar" style="width:25%;background:var(--accent-green);"></div>
+        </div>
+      </div>
+    </div>
+
+    <div class="stats-row" style="margin-top:1.5rem;">
+      <div class="stat-item">
+        <div class="stat-value blue" id="stat-cache-mb">256</div>
+        <div class="stat-label" data-i18n="k17-stat-cache">快取 (MB)</div>
+      </div>
+      <div class="stat-item">
+        <div class="stat-value" id="stat-free-mb" style="color:var(--text-secondary);">768</div>
+        <div class="stat-label" data-i18n="k17-stat-free">可用記憶體 (MB)</div>
+      </div>
+      <div class="stat-item">
+        <div class="stat-value orange" id="stat-efficiency">2.4</div>
+        <div class="stat-label" data-i18n="k17-stat-efficiency">命中率/MB (x10^-1)</div>
+      </div>
+      <div class="stat-item">
+        <div class="stat-value" id="stat-status" style="font-size:0.9rem;color:var(--accent-green);" data-i18n="k17-status-healthy">健康</div>
+        <div class="stat-label" data-i18n="k17-stat-status">系統狀態</div>
+      </div>
+    </div>
+
+    <div style="margin-top:1.5rem;padding:1rem;border-radius:var(--radius-sm);background:rgba(255,255,255,0.02);">
+      <div style="font-size:0.75rem;color:var(--text-dim);text-transform:uppercase;letter-spacing:1px;margin-bottom:0.75rem;" data-i18n="k17-chart-title">命中率曲線（回報遞減）</div>
+      <div class="diagram-container">
+        <svg viewBox="0 0 500 160" xmlns="http://www.w3.org/2000/svg" id="curve-svg">
+          <!-- Axes -->
+          <line x1="50" y1="10" x2="50" y2="140" stroke="rgba(255,255,255,0.1)" stroke-width="1"/>
+          <line x1="50" y1="140" x2="480" y2="140" stroke="rgba(255,255,255,0.1)" stroke-width="1"/>
+          <text x="250" y="156" text-anchor="middle" font-family="var(--font-mono)" font-size="9" fill="#6a7280" data-i18n="k17-axis-size">快取大小 &rarr;</text>
+          <text x="14" y="80" text-anchor="middle" font-family="var(--font-mono)" font-size="9" fill="#6a7280" transform="rotate(-90,14,80)" data-i18n="k17-axis-hit">命中率 &rarr;</text>
+          <!-- Curve path (logarithmic shape) -->
+          <path id="curve-path" d="M50,135 Q120,60 200,40 Q300,22 400,16 L480,14" fill="none" stroke="rgba(88,166,255,0.3)" stroke-width="2"/>
+          <!-- Current point -->
+          <circle id="curve-dot" cx="158" cy="52" r="6" fill="#58a6ff" style="filter:drop-shadow(0 0 6px rgba(88,166,255,0.5));transition:all 0.3s ease;"/>
+          <!-- Dashed lines from point to axes -->
+          <line id="curve-vline" x1="158" y1="52" x2="158" y2="140" stroke="rgba(88,166,255,0.2)" stroke-width="1" stroke-dasharray="3,3" style="transition:all 0.3s ease;"/>
+          <line id="curve-hline" x1="50" y1="52" x2="158" y2="52" stroke="rgba(88,166,255,0.2)" stroke-width="1" stroke-dasharray="3,3" style="transition:all 0.3s ease;"/>
+        </svg>
+      </div>
+    </div>
+  </div>
+
+  <div class="koan-section-title" data-i18n="k17-section-question">思考</div>
+  <div class="question-group visible" id="q1">
+    <div class="question-label" data-i18n="k17-q1">當快取超過可用記憶體時會發生什麼？</div>
+    <div class="question-options">
+      <div class="question-option" data-answer="correct" data-i18n="k17-q1-a1">OS 交換 (swapping)、抖動 (thrashing)、甚至崩潰——都可能發生</div>
+      <div class="question-option" data-answer="incorrect" data-i18n="k17-q1-a2">沒事，記憶體是無限的</div>
+      <div class="question-option" data-answer="incorrect" data-i18n="k17-q1-a3">快取會自動縮小</div>
+    </div>
+    <div class="question-feedback" id="q1-feedback"></div>
+  </div>
+
+  <div class="k17-insight">
+    <div class="insight-box" id="insight-box">
+      <div class="insight-label" data-i18n="k17-insight-label">洞察</div>
+      <div class="insight-text" data-i18n-html="k17-insight-text">
+        經驗法則：快取你的<code>工作集</code> (working set)，而非整個資料集。<br><br>
+        同時監控記憶體使用量和命中率。如果命中率已經 95%，再增加快取大小帶來的收益微乎其微。但如果系統開始 swap，整體性能會直線下降。<br><br>
+        實務上，設定 <code>maxmemory</code>（Redis）或 <code>-Xmx</code>（JVM）來限制快取的記憶體上限是基本功。
+      </div>
+    </div>
+  </div>
+</div>
+
+<script src="../js/progress.js"></script>
+<script src="../js/scroll.js"></script>
+<script>
+(function () {
+  'use strict';
+
+  var TOTAL_MEMORY = 1024; // MB
+  var slider = document.getElementById('cache-size-slider');
+  var sizeDisplay = document.getElementById('cache-size-display');
+  var hitrateDisplay = document.getElementById('hitrate-display');
+  var memoryDisplay = document.getElementById('memory-display');
+  var hitrateBar = document.getElementById('hitrate-bar');
+  var memoryBar = document.getElementById('memory-bar');
+  var statCacheMB = document.getElementById('stat-cache-mb');
+  var statFreeMB = document.getElementById('stat-free-mb');
+  var statEfficiency = document.getElementById('stat-efficiency');
+  var statStatus = document.getElementById('stat-status');
+  var curveDot = document.getElementById('curve-dot');
+  var curveVLine = document.getElementById('curve-vline');
+  var curveHLine = document.getElementById('curve-hline');
+
+  function calcHitRate(pct) {
+    // Logarithmic curve: diminishing returns
+    if (pct <= 0) return 0;
+    var rate = 30 * Math.log(1 + pct * 0.09) + pct * 0.15;
+    return Math.min(Math.round(rate), 99);
+  }
+
+  function getMemoryClass(pct) {
+    if (pct < 50) return '';
+    if (pct < 75) return 'warning';
+    return 'danger';
+  }
+
+  function getStatusText(memPct) {
+    if (memPct < 50) return '\u5065\u5eb7'; // 健康
+    if (memPct < 75) return '\u8b66\u544a'; // 警告
+    if (memPct < 90) return '\u5371\u96aa'; // 危險
+    return '\u6296\u52d5 (thrashing)'; // 抖動
+  }
+
+  function getStatusColor(memPct) {
+    if (memPct < 50) return 'var(--accent-green)';
+    if (memPct < 75) return 'var(--accent-orange)';
+    return 'var(--accent-red)';
+  }
+
+  function update() {
+    var pct = parseInt(slider.value);
+    var cacheMB = Math.round(TOTAL_MEMORY * pct / 100);
+    var freeMB = TOTAL_MEMORY - cacheMB;
+    var hitRate = calcHitRate(pct);
+    var memPressure = pct;
+    var efficiency = cacheMB > 0 ? (hitRate / cacheMB * 10).toFixed(1) : '0';
+
+    sizeDisplay.textContent = cacheMB + ' MB';
+    hitrateDisplay.textContent = hitRate + '%';
+    memoryDisplay.textContent = memPressure + '%';
+
+    hitrateBar.style.width = hitRate + '%';
+    hitrateBar.style.background = hitRate > 80 ? 'var(--accent-green)' : hitRate > 40 ? 'var(--accent-blue)' : 'var(--accent-orange)';
+
+    memoryBar.style.width = memPressure + '%';
+    memoryBar.className = 'load-meter-fill';
+    var memClass = getMemoryClass(memPressure);
+    if (memClass) memoryBar.classList.add(memClass);
+
+    statCacheMB.textContent = cacheMB;
+    statFreeMB.textContent = freeMB;
+    statEfficiency.textContent = efficiency;
+    statStatus.textContent = getStatusText(memPressure);
+    statStatus.style.color = getStatusColor(memPressure);
+
+    hitrateDisplay.className = memPressure >= 90 ? 'text-red' : (hitRate >= 70 ? 'text-green' : 'text-orange');
+    memoryDisplay.className = memPressure >= 75 ? 'text-red' : (memPressure >= 50 ? 'text-orange' : 'text-green');
+
+    // Update curve chart dot
+    var dotX = 50 + (pct / 100) * 430;
+    var dotY = 135 - (hitRate / 100) * 125;
+    curveDot.setAttribute('cx', dotX);
+    curveDot.setAttribute('cy', dotY);
+    curveVLine.setAttribute('x1', dotX);
+    curveVLine.setAttribute('x2', dotX);
+    curveVLine.setAttribute('y1', dotY);
+    curveHLine.setAttribute('x2', dotX);
+    curveHLine.setAttribute('y1', dotY);
+    curveHLine.setAttribute('y2', dotY);
+  }
+
+  slider.addEventListener('input', update);
+  update();
+
+  // --- Question Logic ---
+  var q1 = document.getElementById('q1');
+  var q1Feedback = document.getElementById('q1-feedback');
+  var insightBox = document.querySelector('.k17-insight');
+  var q1Answered = false;
+
+  q1.querySelectorAll('.question-option').forEach(function(opt) {
+    opt.addEventListener('click', function() {
+      if (q1Answered) return;
+      var isCorrect = opt.getAttribute('data-answer') === 'correct';
+      if (isCorrect) {
+        q1Answered = true;
+        opt.classList.add('correct');
+        q1Feedback.textContent = '\u2713 \u6b63\u78ba\uff01\u8a18\u61b6\u9ad4\u4e0d\u8db3\u6642\uff0c\u9019\u4e9b\u554f\u984c\u90fd\u53ef\u80fd\u767c\u751f\u3002';
+        q1Feedback.classList.add('visible', 'correct');
+        q1.querySelectorAll('.question-option').forEach(function(o) {
+          if (o !== opt) o.classList.add('disabled');
+        });
+        setTimeout(function() { insightBox.classList.add('visible'); }, 600);
+      } else {
+        opt.classList.add('incorrect');
+        q1Feedback.textContent = '\u2717 \u518d\u60f3\u60f3\u2014\u2014\u8a18\u61b6\u9ad4\u662f\u6709\u9650\u7684\u8cc7\u6e90\u3002';
+        q1Feedback.classList.add('visible', 'incorrect');
+        setTimeout(function() {
+          q1Feedback.classList.remove('visible');
+          setTimeout(function() { q1Feedback.classList.remove('incorrect'); }, 300);
+        }, 2000);
+      }
+    });
+  });
+})();
+</script>
+</body>
+</html>

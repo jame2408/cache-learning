@@ -1,0 +1,248 @@
+<!DOCTYPE html>
+<html lang="zh-TW">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Cache Koans — 快取命中與未命中</title>
+  <link rel="stylesheet" href="../css/shared.css">
+  <script src="../js/i18n.js"></script>
+</head>
+<body>
+
+<!-- Mobile Gate -->
+<div class="mobile-gate">
+  <div class="gate-icon">&#9776;</div>
+  <div class="gate-text" data-i18n="mobile-gate">
+    此學習路徑需要更寬的視窗。請在較大的螢幕上開啟。
+  </div>
+</div>
+
+<div class="koan-page">
+  <div class="koan-number" data-i18n="k02-number">Koan 02</div>
+  <h1 class="koan-title" data-i18n="k02-title">快取命中與未命中</h1>
+  <p class="koan-zen" data-i18n="k02-zen">弟子說：「我去了快取，但什麼都沒找到。」師父說：「那就是你的第一課。」</p>
+
+  <div class="koan-section-title" data-i18n="k02-section-concept">概念</div>
+  <p class="koan-text" data-i18n="k02-text1">快取命中（Cache Hit）表示所請求的資料已存在於快取中，可以直接返回。快取未命中（Cache Miss）表示資料不在快取中，必須從原始來源（如資料庫）取得。</p>
+  <p class="koan-text" data-i18n="k02-text2">命中率（Hit Ratio）是衡量快取效能的關鍵指標。命中率越高，表示快取越有效，系統回應速度越快。</p>
+
+  <div class="koan-section-title" data-i18n="k02-section-sim">互動模擬</div>
+  <p class="koan-text" data-i18n="k02-text-sim">這個快取只有 3 個位置。點擊下方按鈕請求不同的項目（A-F），觀察命中與未命中的情況。當快取已滿，新項目會替換最早的項目。</p>
+
+  <div class="koan-interactive">
+    <div class="diagram-container" id="sim-diagram">
+      <svg viewBox="0 0 700 180" xmlns="http://www.w3.org/2000/svg">
+        <!-- Cache Slots -->
+        <text x="350" y="20" text-anchor="middle" font-family="var(--font-mono)" font-size="12" fill="#6a7280" data-i18n="k02-diag-cache-title">快取（3 個位置）</text>
+
+        <g class="svg-node" id="slot-0" transform="translate(170, 35)">
+          <rect width="100" height="50" fill="rgba(22,27,34,0.8)" stroke="rgba(255,255,255,0.08)" stroke-width="1.5" rx="8"/>
+          <text id="slot-0-text" x="50" y="32" text-anchor="middle" font-family="var(--font-mono)" font-size="14" fill="#6a7280">—</text>
+        </g>
+        <g class="svg-node" id="slot-1" transform="translate(300, 35)">
+          <rect width="100" height="50" fill="rgba(22,27,34,0.8)" stroke="rgba(255,255,255,0.08)" stroke-width="1.5" rx="8"/>
+          <text id="slot-1-text" x="50" y="32" text-anchor="middle" font-family="var(--font-mono)" font-size="14" fill="#6a7280">—</text>
+        </g>
+        <g class="svg-node" id="slot-2" transform="translate(430, 35)">
+          <rect width="100" height="50" fill="rgba(22,27,34,0.8)" stroke="rgba(255,255,255,0.08)" stroke-width="1.5" rx="8"/>
+          <text id="slot-2-text" x="50" y="32" text-anchor="middle" font-family="var(--font-mono)" font-size="14" fill="#6a7280">—</text>
+        </g>
+
+        <!-- Result display -->
+        <text id="sim-result" x="350" y="120" text-anchor="middle" font-family="var(--font-mono)" font-size="16" fill="transparent"></text>
+        <text id="sim-detail" x="350" y="145" text-anchor="middle" font-family="var(--font-mono)" font-size="11" fill="#6a7280"></text>
+      </svg>
+    </div>
+
+    <div style="display:flex; gap:0.8rem; align-items:center; flex-wrap:wrap; margin-bottom:1.5rem;">
+      <span style="font-size:0.8rem; color:var(--text-dim); margin-right:0.5rem;" data-i18n="k02-request-label">請求項目：</span>
+      <button class="action-btn" data-item="A">A</button>
+      <button class="action-btn" data-item="B">B</button>
+      <button class="action-btn" data-item="C">C</button>
+      <button class="action-btn" data-item="D">D</button>
+      <button class="action-btn" data-item="E">E</button>
+      <button class="action-btn" data-item="F">F</button>
+      <button class="action-btn" id="btn-reset" style="margin-left:1rem;" data-i18n="k02-btn-reset">重置</button>
+    </div>
+
+    <div class="stats-row">
+      <div class="stat-item">
+        <div class="stat-value blue" id="stat-total">0</div>
+        <div class="stat-label" data-i18n="k02-stat-total">總請求數</div>
+      </div>
+      <div class="stat-item">
+        <div class="stat-value green" id="stat-hits">0</div>
+        <div class="stat-label" data-i18n="k02-stat-hits">命中</div>
+      </div>
+      <div class="stat-item">
+        <div class="stat-value red" id="stat-misses">0</div>
+        <div class="stat-label" data-i18n="k02-stat-misses">未命中</div>
+      </div>
+      <div class="stat-item">
+        <div class="stat-value orange" id="stat-ratio">0%</div>
+        <div class="stat-label" data-i18n="k02-stat-ratio">命中率</div>
+      </div>
+    </div>
+  </div>
+
+  <div class="koan-section-title" data-i18n="k02-section-question">思考</div>
+  <div class="question-group visible" id="q1">
+    <div class="question-label" data-i18n="k02-q1">當發生快取未命中時，會發生什麼？</div>
+    <div class="question-options">
+      <div class="question-option" data-answer="correct" data-i18n="k02-q1-a1">從原始來源取得資料並存入快取</div>
+      <div class="question-option" data-answer="incorrect" data-i18n="k02-q1-a2">返回錯誤訊息</div>
+      <div class="question-option" data-answer="incorrect" data-i18n="k02-q1-a3">等待直到資料出現在快取中</div>
+    </div>
+    <div class="question-feedback" id="q1-feedback"></div>
+  </div>
+
+  <div class="k02-insight">
+    <div class="insight-box" id="insight-box">
+      <div class="insight-label" data-i18n="k02-insight-label">洞察</div>
+      <div class="insight-text" data-i18n-html="k02-insight-text">
+        <strong>冷啟動問題（Cold Start Problem）</strong>：當快取剛啟動時，裡面是空的，所有請求都會未命中——命中率為 0%。<br><br>
+        隨著時間推移，快取逐漸被熱門資料填滿，命中率才會上升。這就是為什麼系統剛啟動時通常較慢，需要「暖機」時間。<br><br>
+        有些系統會在啟動時主動「預熱」快取（<code>cache warming</code>），預先載入預期會被請求的資料。
+      </div>
+    </div>
+  </div>
+</div>
+
+<script src="../js/progress.js"></script>
+<script src="../js/scroll.js"></script>
+<script>
+(function () {
+  'use strict';
+
+  // --- Cache Simulation ---
+  const CACHE_SIZE = 3;
+  let cache = [];
+  let totalRequests = 0;
+  let hits = 0;
+  let misses = 0;
+  let animating = false;
+
+  function updateSlots() {
+    for (let i = 0; i < CACHE_SIZE; i++) {
+      const textEl = document.getElementById('slot-' + i + '-text');
+      const nodeEl = document.getElementById('slot-' + i);
+      textEl.textContent = cache[i] || '—';
+      textEl.setAttribute('fill', cache[i] ? '#e0e0e0' : '#6a7280');
+      nodeEl.classList.remove('hit', 'miss', 'active');
+    }
+  }
+
+  function updateStats() {
+    document.getElementById('stat-total').textContent = totalRequests;
+    document.getElementById('stat-hits').textContent = hits;
+    document.getElementById('stat-misses').textContent = misses;
+    document.getElementById('stat-ratio').textContent = totalRequests > 0
+      ? Math.round((hits / totalRequests) * 100) + '%' : '0%';
+  }
+
+  function requestItem(item) {
+    if (animating) return;
+    animating = true;
+    totalRequests++;
+
+    const resultEl = document.getElementById('sim-result');
+    const detailEl = document.getElementById('sim-detail');
+    const idx = cache.indexOf(item);
+
+    if (idx >= 0) {
+      // HIT
+      hits++;
+      const slotNode = document.getElementById('slot-' + idx);
+      slotNode.classList.add('hit');
+      resultEl.textContent = 'HIT ✓';
+      resultEl.setAttribute('fill', '#3fb950');
+      detailEl.textContent = '項目 ' + item + ' 在快取位置 ' + (idx + 1) + ' 找到';
+    } else {
+      // MISS
+      misses++;
+      resultEl.textContent = 'MISS ✗';
+      resultEl.setAttribute('fill', '#f85149');
+
+      if (cache.length < CACHE_SIZE) {
+        cache.push(item);
+        detailEl.textContent = '項目 ' + item + ' 不在快取中，新增到位置 ' + cache.length;
+      } else {
+        const evicted = cache.shift();
+        cache.push(item);
+        detailEl.textContent = '項目 ' + item + ' 不在快取中，替換 ' + evicted;
+      }
+
+      setTimeout(() => {
+        updateSlots();
+        // Highlight the newly added slot
+        const newIdx = cache.indexOf(item);
+        if (newIdx >= 0) {
+          document.getElementById('slot-' + newIdx).classList.add('miss');
+        }
+      }, 300);
+    }
+
+    updateStats();
+
+    setTimeout(() => {
+      updateSlots();
+      resultEl.setAttribute('fill', 'transparent');
+      detailEl.textContent = '';
+      animating = false;
+    }, 1200);
+  }
+
+  // Item buttons
+  document.querySelectorAll('[data-item]').forEach(btn => {
+    btn.addEventListener('click', () => requestItem(btn.getAttribute('data-item')));
+  });
+
+  // Reset button
+  document.getElementById('btn-reset').addEventListener('click', () => {
+    cache = [];
+    totalRequests = 0;
+    hits = 0;
+    misses = 0;
+    animating = false;
+    updateSlots();
+    updateStats();
+    document.getElementById('sim-result').setAttribute('fill', 'transparent');
+    document.getElementById('sim-detail').textContent = '';
+  });
+
+  // --- Question Logic ---
+  const q1 = document.getElementById('q1');
+  const q1Feedback = document.getElementById('q1-feedback');
+  const insightBox = document.querySelector('.k02-insight');
+  let q1Answered = false;
+
+  q1.querySelectorAll('.question-option').forEach(opt => {
+    opt.addEventListener('click', () => {
+      if (q1Answered) return;
+      const isCorrect = opt.getAttribute('data-answer') === 'correct';
+      if (isCorrect) {
+        q1Answered = true;
+        opt.classList.add('correct');
+        q1Feedback.textContent = '✓ 正確！未命中時，系統會從原始來源取得資料並寫入快取。';
+        q1Feedback.classList.add('visible', 'correct');
+        q1.querySelectorAll('.question-option').forEach(o => {
+          if (o !== opt) o.classList.add('disabled');
+        });
+        setTimeout(() => {
+          insightBox.classList.add('visible');
+        }, 600);
+      } else {
+        opt.classList.add('incorrect');
+        q1Feedback.textContent = '✗ 再想想——快取未命中不是錯誤，而是一個學習機會。';
+        q1Feedback.classList.add('visible', 'incorrect');
+        setTimeout(() => {
+          q1Feedback.classList.remove('visible');
+          setTimeout(() => q1Feedback.classList.remove('incorrect'), 300);
+        }, 2000);
+      }
+    });
+  });
+})();
+</script>
+</body>
+</html>

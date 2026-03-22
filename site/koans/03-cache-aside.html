@@ -1,0 +1,263 @@
+<!DOCTYPE html>
+<html lang="zh-TW">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Cache Koans — Cache-Aside 模式</title>
+  <link rel="stylesheet" href="../css/shared.css">
+  <script src="../js/i18n.js"></script>
+</head>
+<body>
+
+<!-- Mobile Gate -->
+<div class="mobile-gate">
+  <div class="gate-icon">&#9776;</div>
+  <div class="gate-text" data-i18n="mobile-gate">
+    此學習路徑需要更寬的視窗。請在較大的螢幕上開啟。
+  </div>
+</div>
+
+<div class="koan-page">
+  <div class="koan-number" data-i18n="k03-number">Koan 03</div>
+  <h1 class="koan-title" data-i18n="k03-title">Cache-Aside（旁路快取）模式</h1>
+  <p class="koan-zen" data-i18n="k03-zen">師父說：「只在需要時才拿，拿到後要記住。」</p>
+
+  <div class="koan-section-title" data-i18n="k03-section-concept">概念</div>
+  <p class="koan-text" data-i18n="k03-text1">Cache-Aside（也稱為 Lazy Loading）是最常見的快取模式。應用程式自己負責管理快取：先檢查快取，若未命中則從資料庫讀取，然後將資料寫入快取，最後返回給用戶。</p>
+  <p class="koan-text" data-i18n="k03-text2">在這個模式中，快取是「被動的」——它不會自己去取資料，一切由應用程式控制。</p>
+
+  <div class="koan-section-title" data-i18n="k03-section-flow">流程步驟</div>
+  <p class="koan-text" data-i18n="k03-text-flow">點擊「下一步」按鈕，逐步觀察 Cache-Aside 的讀取流程。</p>
+
+  <div class="koan-interactive">
+    <div class="diagram-container">
+      <svg viewBox="0 0 700 200" xmlns="http://www.w3.org/2000/svg">
+        <!-- Edges -->
+        <path d="M 140 100 L 270 100" stroke="rgba(255,255,255,0.08)" stroke-width="1.5" fill="none" id="edge-app-cache"/>
+        <path d="M 350 100 L 470 100" stroke="rgba(255,255,255,0.08)" stroke-width="1.5" fill="none" id="edge-cache-db" stroke-dasharray="4,4"/>
+        <path d="M 270 100 L 270 170 L 470 170 L 470 130" stroke="rgba(255,255,255,0.08)" stroke-width="1.5" fill="none" stroke-dasharray="4,4" id="edge-app-db-direct"/>
+
+        <!-- App Node -->
+        <g class="svg-node" id="node-app" transform="translate(60, 70)">
+          <rect width="80" height="60" fill="rgba(22,27,34,0.8)" stroke="rgba(255,255,255,0.08)" stroke-width="1.5" rx="8"/>
+          <text x="40" y="25" text-anchor="middle" font-family="var(--font-mono)" font-size="11" fill="#6a7280" data-i18n="k03-diag-app">應用程式</text>
+          <text x="40" y="45" text-anchor="middle" font-size="18">&#9881;</text>
+        </g>
+
+        <!-- Cache Node -->
+        <g class="svg-node" id="node-cache" transform="translate(230, 70)">
+          <rect width="80" height="60" fill="rgba(22,27,34,0.8)" stroke="rgba(255,255,255,0.08)" stroke-width="1.5" rx="8"/>
+          <text x="40" y="25" text-anchor="middle" font-family="var(--font-mono)" font-size="11" fill="#6a7280" data-i18n="k03-diag-cache">快取</text>
+          <text x="40" y="45" text-anchor="middle" font-size="18">&#9889;</text>
+        </g>
+
+        <!-- DB Node -->
+        <g class="svg-node" id="node-db" transform="translate(470, 70)">
+          <rect width="80" height="60" fill="rgba(22,27,34,0.8)" stroke="rgba(255,255,255,0.08)" stroke-width="1.5" rx="8"/>
+          <text x="40" y="25" text-anchor="middle" font-family="var(--font-mono)" font-size="11" fill="#6a7280" data-i18n="k03-diag-db">資料庫</text>
+          <text x="40" y="45" text-anchor="middle" font-size="18">&#128451;</text>
+        </g>
+
+        <!-- Step labels -->
+        <text id="step-label-1" x="190" y="85" font-family="var(--font-mono)" font-size="10" fill="transparent">1</text>
+        <text id="step-label-2" x="310" y="85" font-family="var(--font-mono)" font-size="10" fill="transparent">2</text>
+        <text id="step-label-3" x="370" y="162" font-family="var(--font-mono)" font-size="10" fill="transparent">3</text>
+        <text id="step-label-4" x="190" y="85" font-family="var(--font-mono)" font-size="10" fill="transparent">4</text>
+      </svg>
+    </div>
+
+    <div class="timeline" id="timeline">
+      <div class="timeline-step" id="step-1" data-i18n="k03-step1">
+        <strong>步驟 1：</strong>應用程式收到請求，先檢查快取中是否有資料。
+      </div>
+      <div class="timeline-step" id="step-2" data-i18n="k03-step2">
+        <strong>步驟 2：</strong>快取未命中——資料不在快取中。
+      </div>
+      <div class="timeline-step" id="step-3" data-i18n="k03-step3">
+        <strong>步驟 3：</strong>應用程式直接從資料庫讀取資料。
+      </div>
+      <div class="timeline-step" id="step-4" data-i18n="k03-step4">
+        <strong>步驟 4：</strong>應用程式將資料寫入快取，然後返回給用戶。下次相同的請求就會命中快取。
+      </div>
+    </div>
+
+    <div style="display:flex; gap:1rem; align-items:center; flex-wrap:wrap;">
+      <button class="action-btn" id="btn-next-step" data-i18n="k03-btn-next">下一步</button>
+      <button class="action-btn" id="btn-reset" data-i18n="k03-btn-reset">重置</button>
+    </div>
+  </div>
+
+  <div class="koan-section-title" data-i18n="k03-section-pros-cons">優缺點</div>
+  <div class="system-cards">
+    <div class="system-card" id="card-pros">
+      <div class="card-title" data-i18n="k03-pros-title">&#10003; 優點</div>
+      <div class="card-output">
+        <div class="line" data-i18n="k03-pros-1">只快取實際被請求的資料</div>
+        <div class="line" data-i18n="k03-pros-2">快取故障時仍可從資料庫讀取</div>
+        <div class="line" data-i18n="k03-pros-3">實作簡單，容易理解</div>
+      </div>
+    </div>
+    <div class="system-card" id="card-cons">
+      <div class="card-title" data-i18n="k03-cons-title">&#10007; 缺點</div>
+      <div class="card-output">
+        <div class="line" data-i18n="k03-cons-1">第一次請求一定是未命中（延遲較高）</div>
+        <div class="line" data-i18n="k03-cons-2">快取中的資料可能過時（stale）</div>
+        <div class="line" data-i18n="k03-cons-3">應用程式需自行處理快取邏輯</div>
+      </div>
+    </div>
+  </div>
+
+  <div class="koan-section-title" data-i18n="k03-section-question">思考</div>
+  <div class="question-group visible" id="q1">
+    <div class="question-label" data-i18n="k03-q1">在 Cache-Aside 模式中，誰負責將資料寫入快取？</div>
+    <div class="question-options">
+      <div class="question-option" data-answer="correct" data-i18n="k03-q1-a1">應用程式碼</div>
+      <div class="question-option" data-answer="incorrect" data-i18n="k03-q1-a2">快取本身</div>
+      <div class="question-option" data-answer="incorrect" data-i18n="k03-q1-a3">資料庫觸發器</div>
+    </div>
+    <div class="question-feedback" id="q1-feedback"></div>
+  </div>
+
+  <div class="k03-insight">
+    <div class="insight-box" id="insight-box">
+      <div class="insight-label" data-i18n="k03-insight-label">洞察</div>
+      <div class="insight-text" data-i18n-html="k03-insight-text">
+        Cache-Aside 的核心精神是「<strong>懶加載</strong>」——只在需要時才載入資料。<br><br>
+        這就像你不會把整本百科全書背下來，而是在需要某個知識時才去查閱，然後記住它。<br><br>
+        優點是不會浪費記憶體儲存不需要的資料。缺點是第一次查詢總是最慢的，而且如果百科全書（資料庫）更新了，你的記憶（快取）可能已經過時。<br><br>
+        這是最廣泛使用的快取模式，<code>Memcached</code> 和 <code>Redis</code> 的典型使用方式就是 Cache-Aside。
+      </div>
+    </div>
+  </div>
+</div>
+
+<script src="../js/progress.js"></script>
+<script src="../js/scroll.js"></script>
+<script>
+(function () {
+  'use strict';
+
+  // --- Timeline Step-through ---
+  let currentStep = 0;
+  const totalSteps = 4;
+  const nodeApp = document.getElementById('node-app');
+  const nodeCache = document.getElementById('node-cache');
+  const nodeDB = document.getElementById('node-db');
+
+  function resetAll() {
+    currentStep = 0;
+    nodeApp.classList.remove('active', 'hit', 'miss');
+    nodeCache.classList.remove('active', 'hit', 'miss');
+    nodeDB.classList.remove('active', 'hit', 'miss');
+    for (let i = 1; i <= totalSteps; i++) {
+      const step = document.getElementById('step-' + i);
+      step.classList.remove('visible', 'active', 'done');
+      document.getElementById('step-label-' + i).setAttribute('fill', 'transparent');
+    }
+  }
+
+  function advanceStep() {
+    if (currentStep >= totalSteps) return;
+    currentStep++;
+
+    // Mark previous steps as done
+    for (let i = 1; i < currentStep; i++) {
+      document.getElementById('step-' + i).classList.remove('active');
+      document.getElementById('step-' + i).classList.add('done');
+    }
+
+    const stepEl = document.getElementById('step-' + currentStep);
+    stepEl.classList.add('visible', 'active');
+
+    // Animate nodes per step
+    nodeApp.classList.remove('active', 'hit', 'miss');
+    nodeCache.classList.remove('active', 'hit', 'miss');
+    nodeDB.classList.remove('active', 'hit', 'miss');
+
+    switch (currentStep) {
+      case 1:
+        nodeApp.classList.add('active');
+        nodeCache.classList.add('active');
+        document.getElementById('step-label-1').setAttribute('fill', '#58a6ff');
+        break;
+      case 2:
+        nodeCache.classList.add('miss');
+        document.getElementById('step-label-2').setAttribute('fill', '#f85149');
+        break;
+      case 3:
+        nodeApp.classList.add('active');
+        nodeDB.classList.add('active');
+        document.getElementById('step-label-3').setAttribute('fill', '#58a6ff');
+        break;
+      case 4:
+        nodeApp.classList.add('active');
+        nodeCache.classList.add('hit');
+        document.getElementById('step-label-4').setAttribute('fill', '#3fb950');
+        break;
+    }
+
+    if (currentStep >= totalSteps) {
+      document.getElementById('btn-next-step').classList.add('done');
+      document.getElementById('btn-next-step').textContent = '完成';
+    }
+  }
+
+  document.getElementById('btn-next-step').addEventListener('click', advanceStep);
+  document.getElementById('btn-reset').addEventListener('click', () => {
+    resetAll();
+    const btn = document.getElementById('btn-next-step');
+    btn.classList.remove('done');
+    btn.textContent = '下一步';
+    if (window.I18n) {
+      const t = window.I18n.t('k03-btn-next');
+      if (t && t !== 'k03-btn-next') btn.textContent = t;
+    }
+  });
+
+  // --- Pros/Cons Cards ---
+  document.querySelectorAll('.system-card').forEach(card => {
+    card.addEventListener('click', () => {
+      if (card.classList.contains('clicked')) return;
+      card.classList.add('clicked');
+      card.querySelectorAll('.line').forEach((line, i) => {
+        setTimeout(() => line.classList.add('visible'), (i + 1) * 300);
+      });
+    });
+  });
+
+  // --- Question Logic ---
+  const q1 = document.getElementById('q1');
+  const q1Feedback = document.getElementById('q1-feedback');
+  const insightBox = document.querySelector('.k03-insight');
+  let q1Answered = false;
+
+  q1.querySelectorAll('.question-option').forEach(opt => {
+    opt.addEventListener('click', () => {
+      if (q1Answered) return;
+      const isCorrect = opt.getAttribute('data-answer') === 'correct';
+      if (isCorrect) {
+        q1Answered = true;
+        opt.classList.add('correct');
+        q1Feedback.textContent = '✓ 正確！在 Cache-Aside 中，應用程式負責所有快取操作。';
+        q1Feedback.classList.add('visible', 'correct');
+        q1.querySelectorAll('.question-option').forEach(o => {
+          if (o !== opt) o.classList.add('disabled');
+        });
+        setTimeout(() => {
+          insightBox.classList.add('visible');
+        }, 600);
+      } else {
+        opt.classList.add('incorrect');
+        q1Feedback.textContent = '✗ 再想想——Cache-Aside 中快取是被動的。';
+        q1Feedback.classList.add('visible', 'incorrect');
+        setTimeout(() => {
+          q1Feedback.classList.remove('visible');
+          setTimeout(() => q1Feedback.classList.remove('incorrect'), 300);
+        }, 2000);
+      }
+    });
+  });
+})();
+</script>
+</body>
+</html>

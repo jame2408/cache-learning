@@ -1,0 +1,180 @@
+<!DOCTYPE html>
+<html lang="zh-TW">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Cache Koan 21 - Cache Security</title>
+  <link rel="stylesheet" href="../css/shared.css">
+  <script src="../js/i18n.js"></script>
+</head>
+<body>
+
+<div class="mobile-gate">
+  <div class="gate-icon">&#9776;</div>
+  <div class="gate-text" data-i18n="mobile-gate">此學習路徑需要更寬的視窗。請在較大的螢幕上開啟。</div>
+</div>
+
+<div class="koan-page">
+  <div class="koan-number" data-i18n="k21-number">Koan 21</div>
+  <h1 class="koan-title" data-i18n="k21-title">快取安全</h1>
+  <p class="koan-zen" data-i18n="k21-zen">「快取記住一切——包括不該記住的。」</p>
+
+  <h2 class="koan-section-title" data-i18n="k21-section-explain">理解</h2>
+  <p class="koan-text" data-i18n="k21-explain">快取帶來速度，但也帶來風險。當快取儲存了敏感資料——個人資訊、認證令牌、私人回應——它可能成為安全漏洞的來源。常見的快取安全威脅包括：共享快取洩漏（使用者 A 看到使用者 B 的資料）、快取中毒（攻擊者注入惡意內容）、以及時序攻擊（透過命中/未命中的回應時間推斷資料存在性）。</p>
+
+  <h2 class="koan-section-title" data-i18n="k21-section-interactive">安全情境模擬</h2>
+  <p class="koan-text" data-i18n="k21-interactive-desc">點擊每張情境卡片，揭示問題與解決方案。</p>
+
+  <div class="system-cards" id="scenario-cards">
+    <div class="system-card" id="card-leak" data-scenario="leak">
+      <div class="card-title" data-i18n="k21-card1-title">&#128100; 共享快取洩漏</div>
+      <div class="card-output">
+        <div class="line" data-i18n="k21-card1-hint">點擊查看情境...</div>
+      </div>
+    </div>
+    <div class="system-card" id="card-poison" data-scenario="poison">
+      <div class="card-title" data-i18n="k21-card2-title">&#9760; 快取中毒</div>
+      <div class="card-output">
+        <div class="line" data-i18n="k21-card2-hint">點擊查看情境...</div>
+      </div>
+    </div>
+    <div class="system-card" id="card-timing" data-scenario="timing">
+      <div class="card-title" data-i18n="k21-card3-title">&#9201; 時序攻擊</div>
+      <div class="card-output">
+        <div class="line" data-i18n="k21-card3-hint">點擊查看情境...</div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Detail panels revealed on card click -->
+  <div class="koan-interactive hidden" id="detail-leak">
+    <div class="card-title text-red" data-i18n="k21-detail1-problem">問題</div>
+    <p class="koan-text" data-i18n="k21-detail1-desc">使用者 A 登入後，其個人資料被快取。使用者 B 發送相同的請求 URL，快取直接回傳使用者 A 的資料。使用者 B 看到了使用者 A 的姓名、信箱和帳戶餘額。</p>
+    <div class="code-block">
+      <span class="comment">// 危險：快取鍵只用 URL</span><br>
+      <span class="keyword">cache_key</span> = <span class="string">"/api/profile"</span><br><br>
+      <span class="comment">// 安全：快取鍵包含使用者身分</span><br>
+      <span class="keyword">cache_key</span> = <span class="string">"/api/profile:user_id=12345"</span>
+    </div>
+    <div class="card-title text-green" style="margin-top:1rem;" data-i18n="k21-detail1-solution">解決方案</div>
+    <p class="koan-text" data-i18n="k21-detail1-fix">快取鍵必須包含使用者身分標識。對個人化回應使用 <code>Cache-Control: private</code>，或完全不快取敏感端點。</p>
+  </div>
+
+  <div class="koan-interactive hidden" id="detail-poison">
+    <div class="card-title text-red" data-i18n="k21-detail2-problem">問題</div>
+    <p class="koan-text" data-i18n="k21-detail2-desc">攻擊者操縱 HTTP 標頭（如 X-Forwarded-Host），使伺服器產生包含惡意 JavaScript 的回應。快取儲存了這個被汙染的回應，並將其提供給所有後續使用者。</p>
+    <div class="code-block">
+      <span class="comment">// 攻擊者的請求</span><br>
+      <span class="keyword">GET</span> /page <span class="keyword">HTTP/1.1</span><br>
+      <span class="keyword">X-Forwarded-Host:</span> <span class="string">evil.com</span><br><br>
+      <span class="comment">// 伺服器回應（被汙染）</span><br>
+      &lt;script src=<span class="string">"https://evil.com/malware.js"</span>&gt;&lt;/script&gt;
+    </div>
+    <div class="card-title text-green" style="margin-top:1rem;" data-i18n="k21-detail2-solution">解決方案</div>
+    <p class="koan-text" data-i18n="k21-detail2-fix">驗證所有用於產生回應的輸入。使用 <code>Vary</code> 標頭正確區分快取變體。僅快取已驗證的、可信的回應。</p>
+  </div>
+
+  <div class="koan-interactive hidden" id="detail-timing">
+    <div class="card-title text-red" data-i18n="k21-detail3-problem">問題</div>
+    <p class="koan-text" data-i18n="k21-detail3-desc">攻擊者查詢特定資源：若回應時間極短（~2ms = 命中），代表該資料存在於快取中；若回應較慢（~200ms = 未命中），代表不存在。攻擊者可藉此推斷其他使用者是否存取過特定資料。</p>
+    <div class="stats-row">
+      <div class="stat-item">
+        <div class="stat-value green">~2ms</div>
+        <div class="stat-label" data-i18n="k21-timing-hit">命中 = 資料存在</div>
+      </div>
+      <div class="stat-item">
+        <div class="stat-value red">~200ms</div>
+        <div class="stat-label" data-i18n="k21-timing-miss">未命中 = 資料不存在</div>
+      </div>
+    </div>
+    <div class="card-title text-green" style="margin-top:1rem;" data-i18n="k21-detail3-solution">解決方案</div>
+    <p class="koan-text" data-i18n="k21-detail3-fix">為敏感端點加入隨機延遲，使回應時間恆定。隔離不同使用者的快取命名空間。避免在共享快取中儲存可洩漏存在性的資料。</p>
+  </div>
+
+  <h2 class="koan-section-title" data-i18n="k21-section-question">思考</h2>
+  <div class="question-group visible" id="q1">
+    <div class="question-label" data-i18n="k21-q1">為什麼快取已認證的回應需要特別小心？</div>
+    <div class="question-options">
+      <div class="question-option" data-answer="correct" data-i18n="k21-q1-a">不同使用者可能收到彼此的資料</div>
+      <div class="question-option" data-answer="wrong" data-i18n="k21-q1-b">認證過程太慢，不適合快取</div>
+      <div class="question-option" data-answer="wrong" data-i18n="k21-q1-c">快取不支援認證標頭</div>
+    </div>
+    <div class="question-feedback" id="q1-feedback"></div>
+  </div>
+
+  <div class="k21-insight">
+    <div class="insight-box">
+      <div class="insight-label" data-i18n="k21-insight-label">洞察</div>
+      <div class="insight-text" data-i18n-html="k21-insight-text">永遠在快取鍵中包含使用者身分標識來處理個人資料。設定適當的 <code>Cache-Control</code> 標頭：<code>private</code> 用於個人回應，<code>no-store</code> 用於敏感資料。考慮對靜態快取資料進行加密保護（encryption at rest）。<br><br>記住：快取的速度優勢不能以犧牲使用者安全為代價。</div>
+    </div>
+  </div>
+</div>
+
+<script src="../js/progress.js"></script>
+<script src="../js/scroll.js"></script>
+<script>
+(function () {
+  'use strict';
+
+  // --- Scenario Cards ---
+  const scenarioDetails = {
+    leak: document.getElementById('detail-leak'),
+    poison: document.getElementById('detail-poison'),
+    timing: document.getElementById('detail-timing')
+  };
+
+  document.querySelectorAll('.system-card').forEach(card => {
+    card.addEventListener('click', () => {
+      if (card.classList.contains('clicked')) return;
+      card.classList.add('clicked');
+      const scenario = card.getAttribute('data-scenario');
+      const lines = card.querySelectorAll('.card-output .line');
+      lines.forEach(l => {
+        l.classList.add('visible');
+        l.style.color = 'var(--accent-green)';
+        l.setAttribute('data-i18n', '');
+        l.textContent = '\u2713 \u5DF2\u63ED\u793A';
+      });
+
+      const detail = scenarioDetails[scenario];
+      if (detail) {
+        detail.classList.remove('hidden');
+        detail.style.animation = 'fade-in-up 0.5s var(--ease-out) forwards';
+      }
+    });
+  });
+
+  // --- Question Logic ---
+  let q1Answered = false;
+  document.querySelectorAll('#q1 .question-option').forEach(opt => {
+    opt.addEventListener('click', () => {
+      if (q1Answered) return;
+      const isCorrect = opt.getAttribute('data-answer') === 'correct';
+      if (isCorrect) {
+        q1Answered = true;
+        opt.classList.add('correct');
+        const fb = document.getElementById('q1-feedback');
+        fb.textContent = '\u2713 \u6B63\u78BA\uFF01\u5171\u4EAB\u5FEB\u53D6\u82E5\u4E0D\u5340\u5206\u4F7F\u7528\u8005\uFF0C\u6703\u5C0E\u81F4\u8CC7\u6599\u6D29\u6F0F\u3002';
+        fb.classList.add('visible', 'correct');
+        document.querySelectorAll('#q1 .question-option').forEach(o => {
+          if (o !== opt) o.classList.add('disabled');
+        });
+        setTimeout(() => {
+          document.querySelector('.k21-insight').classList.add('visible');
+        }, 600);
+      } else {
+        opt.classList.add('incorrect');
+        const fb = document.getElementById('q1-feedback');
+        fb.textContent = '\u2717 \u518D\u60F3\u60F3\u2014\u2014\u5FEB\u53D6\u7684\u5B89\u5168\u554F\u984C\u4E3B\u8981\u662F\u95DC\u65BC\u8CC7\u6599\u9694\u96E2\u3002';
+        fb.classList.add('visible', 'incorrect');
+        setTimeout(() => {
+          fb.classList.remove('visible');
+          setTimeout(() => fb.classList.remove('incorrect'), 300);
+        }, 2000);
+      }
+    });
+  });
+})();
+</script>
+</body>
+</html>

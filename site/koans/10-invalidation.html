@@ -1,0 +1,270 @@
+<!DOCTYPE html>
+<html lang="zh-TW">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Cache Koans — Cache Invalidation</title>
+  <link rel="stylesheet" href="../css/shared.css">
+  <script src="../js/i18n.js"></script>
+</head>
+<body>
+
+<!-- Mobile Gate -->
+<div class="mobile-gate">
+  <div class="gate-icon">&#9776;</div>
+  <div class="gate-text" data-i18n="mobile-gate">
+    此學習路徑需要更寬的視窗。請在較大的螢幕上開啟。
+  </div>
+</div>
+
+<div class="koan-page">
+
+  <div class="koan-number" data-i18n="k10-number">Koan 10</div>
+  <h1 class="koan-title" data-i18n="k10-title">Cache Invalidation</h1>
+  <p class="koan-zen" data-i18n="k10-zen">電腦科學只有兩件難事：快取失效和命名。</p>
+
+  <h2 class="koan-section-title" data-i18n="k10-section-concept">概念</h2>
+  <p class="koan-text" data-i18n="k10-text">
+    當原始資料發生變更時，快取中的副本必須被「失效」（invalidated）。常見的方法有三種：TTL 自動過期、顯式失效（explicit invalidation）、事件驅動失效（event-driven invalidation）。每種方法都有不同的延遲與一致性取捨。
+  </p>
+
+  <h2 class="koan-section-title" data-i18n="k10-section-sim">失效策略模擬</h2>
+  <p class="koan-text" data-i18n="k10-text-sim">模擬一個商品價格變更的場景。修改價格後，觀察三種失效策略如何回應。</p>
+
+  <div class="koan-interactive">
+    <div style="display:flex;align-items:center;gap:1rem;margin-bottom:1.5rem;flex-wrap:wrap;">
+      <div style="font-size:0.85rem;color:var(--text-primary);" data-i18n="k10-product">商品：Widget Pro</div>
+      <div style="font-size:0.85rem;color:var(--text-dim);" data-i18n="k10-current-price">目前價格：</div>
+      <div style="font-size:1.2rem;font-weight:700;color:var(--accent-green);" id="inv-db-price">$99</div>
+      <button class="action-btn" id="inv-change-btn" data-i18n="k10-btn-change">&#9998; 變更價格為 $79</button>
+    </div>
+
+    <div class="system-cards" style="grid-template-columns:1fr 1fr 1fr;">
+      <!-- TTL Strategy -->
+      <div class="system-card" id="inv-panel-ttl">
+        <div class="card-title" data-i18n="k10-strategy-ttl">TTL 過期</div>
+        <div class="card-output" style="text-align:left;align-items:flex-start;">
+          <div style="font-size:0.75rem;color:var(--text-dim);" data-i18n="k10-ttl-desc">等待 TTL 過期後自動刷新</div>
+          <div style="margin:0.5rem 0;font-size:0.9rem;" id="inv-ttl-cached">
+            <span style="color:var(--text-dim);" data-i18n="k10-cached">Cached: </span>
+            <span style="color:var(--accent-green);font-weight:600;" id="inv-ttl-value">$99</span>
+          </div>
+          <div style="font-size:0.7rem;color:var(--text-dim);" id="inv-ttl-timer" data-i18n="k10-ttl-timer">TTL: 5s remaining</div>
+          <div class="load-meter" style="margin-top:0.5rem;">
+            <div class="load-meter-fill" id="inv-ttl-bar" style="width:100%;"></div>
+          </div>
+          <div style="font-size:0.7rem;margin-top:0.3rem;" id="inv-ttl-status"></div>
+        </div>
+      </div>
+
+      <!-- Explicit Strategy -->
+      <div class="system-card" id="inv-panel-explicit">
+        <div class="card-title" data-i18n="k10-strategy-explicit">顯式失效</div>
+        <div class="card-output" style="text-align:left;align-items:flex-start;">
+          <div style="font-size:0.75rem;color:var(--text-dim);" data-i18n="k10-explicit-desc">寫入時主動刪除快取</div>
+          <div style="margin:0.5rem 0;font-size:0.9rem;" id="inv-explicit-cached">
+            <span style="color:var(--text-dim);" data-i18n="k10-cached2">Cached: </span>
+            <span style="color:var(--accent-green);font-weight:600;" id="inv-explicit-value">$99</span>
+          </div>
+          <div style="font-size:0.7rem;margin-top:0.3rem;" id="inv-explicit-status"></div>
+        </div>
+      </div>
+
+      <!-- Event-Driven Strategy -->
+      <div class="system-card" id="inv-panel-event">
+        <div class="card-title" data-i18n="k10-strategy-event">事件驅動</div>
+        <div class="card-output" style="text-align:left;align-items:flex-start;">
+          <div style="font-size:0.75rem;color:var(--text-dim);" data-i18n="k10-event-desc">監聽變更事件後更新快取</div>
+          <div style="margin:0.5rem 0;font-size:0.9rem;" id="inv-event-cached">
+            <span style="color:var(--text-dim);" data-i18n="k10-cached3">Cached: </span>
+            <span style="color:var(--accent-green);font-weight:600;" id="inv-event-value">$99</span>
+          </div>
+          <div style="font-size:0.7rem;margin-top:0.3rem;" id="inv-event-status"></div>
+        </div>
+      </div>
+    </div>
+
+    <div class="timeline" id="inv-timeline" style="margin-top:1.5rem;">
+      <div class="timeline-step" id="inv-step1">
+        <div style="font-size:0.85rem;color:var(--text-primary);" data-i18n="k10-step1">價格從 $99 變更為 $79</div>
+      </div>
+      <div class="timeline-step" id="inv-step2">
+        <div style="font-size:0.85rem;color:var(--text-primary);" data-i18n="k10-step2">顯式失效：立即刪除快取</div>
+      </div>
+      <div class="timeline-step" id="inv-step3">
+        <div style="font-size:0.85rem;color:var(--text-primary);" data-i18n="k10-step3">事件驅動：收到事件，更新快取</div>
+      </div>
+      <div class="timeline-step" id="inv-step4">
+        <div style="font-size:0.85rem;color:var(--text-primary);" data-i18n="k10-step4">TTL：等待過期後，下次讀取重新載入</div>
+      </div>
+    </div>
+  </div>
+
+  <h2 class="koan-section-title" data-i18n="k10-section-question">思考</h2>
+  <div class="question-group visible" id="inv-q1">
+    <div class="question-label" data-i18n="k10-q1">為什麼 Phil Karlton 的快取失效名言如此出名？</div>
+    <div class="question-options">
+      <div class="question-option" data-correct="true" data-i18n="k10-q1-a1">因為它確實是電腦科學中最難的問題之一</div>
+      <div class="question-option" data-i18n="k10-q1-a2">因為它只是個笑話</div>
+      <div class="question-option" data-i18n="k10-q1-a3">因為它已經過時了</div>
+    </div>
+    <div class="question-feedback" id="inv-q1-feedback"></div>
+  </div>
+
+  <div class="k10-insight">
+    <div class="insight-box">
+      <div class="insight-label" data-i18n="k10-insight-label">Insight</div>
+      <div class="insight-text" data-i18n-html="k10-insight-text">
+        在分散式系統中，快取失效變得更加困難——多個節點可能持有同一筆資料的不同版本，網路延遲導致失效訊息無法即時到達，部分失敗使得狀態不一致。<br><br>
+        這就是為什麼許多系統選擇「最終一致性」而非「強一致性」——接受短暫的資料過時，以換取更好的效能和可用性。<br><br>
+        <code>沒有完美的方案，只有適合的權衡。</code>
+      </div>
+    </div>
+  </div>
+
+</div>
+
+<script src="../js/progress.js"></script>
+<script src="../js/scroll.js"></script>
+<script>
+(function () {
+  'use strict';
+
+  const newPrice = '$79';
+  const oldPrice = '$99';
+  let priceChanged = false;
+  let ttlRemaining = 5;
+  let ttlInterval = null;
+
+  const changeBtn = document.getElementById('inv-change-btn');
+  const dbPriceEl = document.getElementById('inv-db-price');
+
+  // TTL elements
+  const ttlValueEl = document.getElementById('inv-ttl-value');
+  const ttlTimerEl = document.getElementById('inv-ttl-timer');
+  const ttlBarEl = document.getElementById('inv-ttl-bar');
+  const ttlStatusEl = document.getElementById('inv-ttl-status');
+
+  // Explicit elements
+  const explicitValueEl = document.getElementById('inv-explicit-value');
+  const explicitStatusEl = document.getElementById('inv-explicit-status');
+
+  // Event elements
+  const eventValueEl = document.getElementById('inv-event-value');
+  const eventStatusEl = document.getElementById('inv-event-status');
+
+  // Timeline steps
+  const steps = ['inv-step1', 'inv-step2', 'inv-step3', 'inv-step4'];
+
+  function showStep(id, state) {
+    const el = document.getElementById(id);
+    el.classList.add('visible', state);
+  }
+
+  changeBtn.addEventListener('click', async function () {
+    if (priceChanged) return;
+    priceChanged = true;
+    changeBtn.classList.add('done');
+
+    // Update DB price
+    dbPriceEl.textContent = newPrice;
+    dbPriceEl.style.color = '#d29922';
+
+    // Step 1: Price changed
+    showStep('inv-step1', 'active');
+    await new Promise(r => setTimeout(r, 600));
+    document.getElementById('inv-step1').classList.remove('active');
+    document.getElementById('inv-step1').classList.add('done');
+
+    // TTL: show stale data (still showing old price)
+    ttlValueEl.style.color = '#f85149';
+    ttlStatusEl.textContent = '\u26a0 stale!';
+    ttlStatusEl.style.color = '#f85149';
+
+    // Step 2: Explicit invalidation - immediate
+    showStep('inv-step2', 'active');
+    await new Promise(r => setTimeout(r, 400));
+    explicitValueEl.textContent = '(invalidated)';
+    explicitValueEl.style.color = '#f85149';
+    explicitStatusEl.textContent = '\u2192 next read loads from DB';
+    explicitStatusEl.style.color = '#d29922';
+    await new Promise(r => setTimeout(r, 500));
+    explicitValueEl.textContent = newPrice;
+    explicitValueEl.style.color = '#3fb950';
+    explicitStatusEl.textContent = '\u2713 refreshed';
+    explicitStatusEl.style.color = '#3fb950';
+    document.getElementById('inv-panel-explicit').classList.add('clicked');
+    document.getElementById('inv-step2').classList.remove('active');
+    document.getElementById('inv-step2').classList.add('done');
+
+    // Step 3: Event-driven - slight delay
+    showStep('inv-step3', 'active');
+    await new Promise(r => setTimeout(r, 800));
+    eventStatusEl.textContent = '\ud83d\udce8 event received';
+    eventStatusEl.style.color = '#d29922';
+    await new Promise(r => setTimeout(r, 400));
+    eventValueEl.textContent = newPrice;
+    eventValueEl.style.color = '#3fb950';
+    eventStatusEl.textContent = '\u2713 updated via event';
+    eventStatusEl.style.color = '#3fb950';
+    document.getElementById('inv-panel-event').classList.add('clicked');
+    document.getElementById('inv-step3').classList.remove('active');
+    document.getElementById('inv-step3').classList.add('done');
+
+    // Step 4: TTL countdown
+    showStep('inv-step4', 'active');
+    ttlRemaining = 5;
+    ttlInterval = setInterval(function () {
+      ttlRemaining--;
+      ttlTimerEl.textContent = 'TTL: ' + ttlRemaining + 's remaining';
+      const pct = (ttlRemaining / 5) * 100;
+      ttlBarEl.style.width = pct + '%';
+      ttlBarEl.className = 'load-meter-fill' + (pct < 30 ? ' danger' : pct < 60 ? ' warning' : '');
+
+      if (ttlRemaining <= 0) {
+        clearInterval(ttlInterval);
+        ttlValueEl.textContent = newPrice;
+        ttlValueEl.style.color = '#3fb950';
+        ttlTimerEl.textContent = 'TTL expired \u2192 refreshed';
+        ttlStatusEl.textContent = '\u2713 finally updated';
+        ttlStatusEl.style.color = '#3fb950';
+        ttlBarEl.style.width = '100%';
+        ttlBarEl.className = 'load-meter-fill';
+        document.getElementById('inv-panel-ttl').classList.add('clicked');
+        document.getElementById('inv-step4').classList.remove('active');
+        document.getElementById('inv-step4').classList.add('done');
+        dbPriceEl.style.color = '#3fb950';
+      }
+    }, 1000);
+  });
+
+  // --- Questions ---
+  document.querySelectorAll('#inv-q1 .question-option').forEach(opt => {
+    opt.addEventListener('click', function () {
+      if (this.classList.contains('correct') || this.classList.contains('incorrect')) return;
+      const isCorrect = this.dataset.correct === 'true';
+      const feedback = document.getElementById('inv-q1-feedback');
+
+      document.querySelectorAll('#inv-q1 .question-option').forEach(o => {
+        if (o.dataset.correct === 'true') o.classList.add('correct');
+        else o.classList.add('disabled');
+      });
+
+      if (isCorrect) {
+        feedback.textContent = '\u2713 \u6b63\u78ba\uff01\u5feb\u53d6\u5931\u6548\u5728\u5206\u6563\u5f0f\u7cfb\u7d71\u4e2d\u662f\u771f\u6b63\u56f0\u96e3\u7684\u554f\u984c\uff0c\u5c24\u5176\u662f\u7576\u6d89\u53ca\u591a\u500b\u7bc0\u9ede\u548c\u7db2\u8def\u5ef6\u9072\u6642\u3002';
+        feedback.className = 'question-feedback visible correct';
+      } else {
+        this.classList.add('incorrect');
+        feedback.textContent = '\u2717 \u5b83\u4e0d\u53ea\u662f\u7b11\u8a71\u2014\u2014\u5728\u5206\u6563\u5f0f\u7cfb\u7d71\u4e2d\uff0c\u5feb\u53d6\u5931\u6548\u78ba\u5be6\u662f\u6700\u96e3\u7684\u554f\u984c\u4e4b\u4e00\u3002';
+        feedback.className = 'question-feedback visible incorrect';
+      }
+
+      setTimeout(() => {
+        document.querySelector('.k10-insight').classList.add('visible');
+      }, 600);
+    });
+  });
+})();
+</script>
+</body>
+</html>

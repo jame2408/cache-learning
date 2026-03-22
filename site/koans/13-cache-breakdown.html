@@ -1,0 +1,313 @@
+<!DOCTYPE html>
+<html lang="zh-TW">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Cache Koans — 快取擊穿</title>
+  <link rel="stylesheet" href="../css/shared.css">
+  <script src="../js/i18n.js"></script>
+</head>
+<body>
+
+<!-- Mobile Gate -->
+<div class="mobile-gate">
+  <div class="gate-icon">&#9776;</div>
+  <div class="gate-text" data-i18n="mobile-gate">
+    此學習路徑需要更寬的視窗。請在較大的螢幕上開啟。
+  </div>
+</div>
+
+<div class="koan-page">
+  <div class="koan-number" data-i18n="k13-number">Koan 13</div>
+  <h1 class="koan-title" data-i18n="k13-title">快取擊穿</h1>
+  <p class="koan-zen" data-i18n="k13-zen">堡壘的城牆有一萬塊磚。只要一塊破裂，洪水就會湧入。</p>
+
+  <div class="koan-section-title" data-i18n="k13-section-explain">理解</div>
+  <p class="koan-text" data-i18n="k13-explain1">快取擊穿（Cache Breakdown）是指一個極度熱門的 key 過期的瞬間，大量併發請求同時湧向資料庫查詢這個 key，造成資料庫瞬間承受巨大壓力。</p>
+  <p class="koan-text" data-i18n="k13-explain2">與驚群效應（Stampede）的差別在於：驚群是多個 key 同時過期；擊穿是單一個「超級熱門」的 key 過期。一個 key 就足以壓垮系統。</p>
+
+  <div class="koan-section-title" data-i18n="k13-section-sim">模擬</div>
+  <p class="koan-text" data-i18n="k13-sim-desc">觀察熱門 key 的 TTL 倒數。當它過期的瞬間，所有流量集中湧入。</p>
+
+  <div class="koan-interactive">
+    <div class="diagram-container">
+      <svg viewBox="0 0 700 340" id="breakdown-svg">
+        <!-- Hot Key indicator -->
+        <g class="svg-node" id="hot-key-node">
+          <rect x="280" y="10" width="140" height="44" rx="8" fill="#111820" stroke="#d29922" stroke-width="2"/>
+          <text x="350" y="30" fill="#d29922" font-size="10" text-anchor="middle" data-i18n="k13-svg-hotkey">熱門 Key</text>
+          <text x="350" y="46" fill="#e0e0e0" font-size="11" text-anchor="middle" id="hot-key-name">product:top-seller</text>
+        </g>
+        <!-- TTL countdown -->
+        <text x="350" y="76" fill="#d29922" font-size="14" text-anchor="middle" font-weight="bold" id="bd-ttl">TTL: 10s</text>
+
+        <!-- Traffic lines (requests) -->
+        <g id="bd-traffic"></g>
+
+        <!-- Cache -->
+        <g class="svg-node" id="bd-cache">
+          <rect x="280" y="100" width="140" height="50" rx="8" fill="#111820" stroke="#6a7280" stroke-width="2"/>
+          <text x="350" y="130" fill="#e0e0e0" font-size="13" text-anchor="middle" data-i18n="k13-svg-cache">快取</text>
+        </g>
+
+        <!-- DB -->
+        <g class="svg-node" id="bd-db">
+          <rect x="280" y="220" width="140" height="50" rx="8" fill="#111820" stroke="#6a7280" stroke-width="2"/>
+          <text x="350" y="250" fill="#e0e0e0" font-size="13" text-anchor="middle" data-i18n="k13-svg-db">資料庫</text>
+        </g>
+
+        <!-- Comparison labels -->
+        <g id="bd-comparison" style="opacity:0">
+          <rect x="20" y="290" width="300" height="36" rx="6" fill="rgba(248,81,73,0.08)" stroke="rgba(248,81,73,0.2)" stroke-width="1"/>
+          <text x="170" y="313" fill="#f85149" font-size="10" text-anchor="middle" data-i18n="k13-svg-breakdown-label">擊穿：單一熱門 key 過期 → 集中衝擊</text>
+          <rect x="380" y="290" width="300" height="36" rx="6" fill="rgba(210,153,34,0.08)" stroke="rgba(210,153,34,0.2)" stroke-width="1"/>
+          <text x="530" y="313" fill="#d29922" font-size="10" text-anchor="middle" data-i18n="k13-svg-stampede-label">驚群：多個 key 同時過期 → 分散衝擊</text>
+        </g>
+      </svg>
+    </div>
+
+    <div class="stats-row">
+      <div class="stat-item">
+        <div class="stat-value orange" id="bd-stat-qps">0</div>
+        <div class="stat-label" data-i18n="k13-stat-qps">每秒請求 (QPS)</div>
+      </div>
+      <div class="stat-item">
+        <div class="stat-value blue" id="bd-stat-status">CACHED</div>
+        <div class="stat-label" data-i18n="k13-stat-status">Key 狀態</div>
+      </div>
+      <div class="stat-item">
+        <div class="stat-value red" id="bd-stat-db">0%</div>
+        <div class="stat-label" data-i18n="k13-stat-db">資料庫負載</div>
+      </div>
+    </div>
+
+    <div style="margin-bottom:0.5rem">
+      <span style="font-size:0.8rem;color:var(--text-dim)" data-i18n="k13-db-load-label">資料庫負載</span>
+    </div>
+    <div class="load-meter">
+      <div class="load-meter-fill" id="bd-load-bar" style="width:5%"></div>
+    </div>
+
+    <div style="margin-top:1.5rem;display:flex;gap:1rem;flex-wrap:wrap">
+      <button class="action-btn" id="btn-bd-expire" data-i18n="k13-btn-expire">模擬 Key 過期</button>
+      <button class="action-btn" id="btn-bd-neverexpire" data-i18n="k13-btn-neverexpire">永不過期 + 背景刷新</button>
+      <button class="action-btn" id="btn-bd-reset" data-i18n="k13-btn-reset">重設</button>
+    </div>
+  </div>
+
+  <div class="koan-section-title" data-i18n="k13-section-question">思考</div>
+
+  <div class="question-group visible" id="q1">
+    <div class="question-label" data-i18n="k13-q1">快取擊穿與驚群效應的主要區別是什麼？</div>
+    <div class="question-options">
+      <div class="question-option" data-answer="correct" data-i18n="k13-q1-a">擊穿是關於單一個熱門 key</div>
+      <div class="question-option" data-answer="wrong" data-i18n="k13-q1-b">擊穿是關於很多 key</div>
+      <div class="question-option" data-answer="wrong" data-i18n="k13-q1-c">它們完全一樣</div>
+    </div>
+    <div class="question-feedback" id="q1-feedback"></div>
+  </div>
+
+  <div class="k13-insight">
+    <div class="insight-box">
+      <div class="insight-label" data-i18n="k13-insight-label">洞察</div>
+      <div class="insight-text" data-i18n-html="k13-insight-text">防止擊穿的策略：<code>永不過期 + 背景刷新</code>（讓 key 永遠有效，由背景程序定期更新）、<code>Mutex 鎖</code>（與驚群相同的鎖機制）、以及<code>預計算熱門 key</code>（提前識別並特殊處理已知的熱門 key）。核心思想是：對於重要的 key，不要讓它有「空窗期」。</div>
+    </div>
+  </div>
+</div>
+
+<script src="../js/progress.js"></script>
+<script src="../js/scroll.js"></script>
+<script>
+(function() {
+  'use strict';
+
+  var svg = document.getElementById('breakdown-svg');
+  var ttlText = document.getElementById('bd-ttl');
+  var hotKeyNode = document.getElementById('hot-key-node');
+  var cacheNode = document.getElementById('bd-cache');
+  var dbNode = document.getElementById('bd-db');
+  var loadBar = document.getElementById('bd-load-bar');
+  var statQps = document.getElementById('bd-stat-qps');
+  var statStatus = document.getElementById('bd-stat-status');
+  var statDb = document.getElementById('bd-stat-db');
+  var trafficG = document.getElementById('bd-traffic');
+  var comparison = document.getElementById('bd-comparison');
+
+  var particles = [];
+  var animTimer = null;
+  var qpsInterval = null;
+
+  function setDbLoad(pct) {
+    loadBar.style.width = pct + '%';
+    loadBar.className = 'load-meter-fill';
+    if (pct > 80) loadBar.classList.add('danger');
+    else if (pct > 50) loadBar.classList.add('warning');
+    statDb.textContent = pct + '%';
+  }
+
+  function clearParticles() {
+    particles.forEach(function(p) { p.remove(); });
+    particles = [];
+  }
+
+  function createParticle(x, startY, endY, color, delay) {
+    var circle = document.createElementNS('http://www.w3.org/2000/svg', 'circle');
+    circle.setAttribute('cx', x);
+    circle.setAttribute('cy', startY);
+    circle.setAttribute('r', '3');
+    circle.setAttribute('fill', color);
+    circle.setAttribute('opacity', '0');
+    svg.appendChild(circle);
+    particles.push(circle);
+    setTimeout(function() {
+      circle.setAttribute('opacity', '0.7');
+      circle.style.transition = 'cy 0.5s ease';
+      setTimeout(function() { circle.setAttribute('cy', endY); }, 30);
+    }, delay);
+    return circle;
+  }
+
+  function resetSim() {
+    if (animTimer) clearTimeout(animTimer);
+    if (qpsInterval) clearInterval(qpsInterval);
+    clearParticles();
+    ttlText.textContent = 'TTL: 10s';
+    ttlText.setAttribute('fill', '#d29922');
+    hotKeyNode.querySelector('rect').setAttribute('stroke', '#d29922');
+    cacheNode.className = 'svg-node';
+    dbNode.className = 'svg-node';
+    setDbLoad(5);
+    statQps.textContent = '0';
+    statStatus.textContent = 'CACHED';
+    statStatus.className = 'stat-value blue';
+    comparison.style.opacity = '0';
+    document.getElementById('btn-bd-expire').classList.remove('done');
+    document.getElementById('btn-bd-neverexpire').classList.remove('done');
+  }
+
+  function simulateBreakdown() {
+    resetSim();
+    document.getElementById('btn-bd-expire').classList.add('done');
+    var ttl = 10;
+    statQps.textContent = '5000';
+
+    // Show steady traffic to cache (hits)
+    qpsInterval = setInterval(function() {
+      var x = 300 + Math.random() * 100;
+      createParticle(x, 80, 120, '#3fb950', 0);
+      setTimeout(function() { clearParticles(); }, 800);
+    }, 200);
+
+    function countdown() {
+      if (ttl <= 0) {
+        clearInterval(qpsInterval);
+        ttlText.textContent = 'TTL: EXPIRED';
+        ttlText.setAttribute('fill', '#f85149');
+        hotKeyNode.querySelector('rect').setAttribute('stroke', '#f85149');
+        cacheNode.className = 'svg-node miss';
+        statStatus.textContent = 'EXPIRED';
+        statStatus.className = 'stat-value red';
+
+        // Flood of requests to DB
+        clearParticles();
+        for (var i = 0; i < 30; i++) {
+          var x = 290 + Math.random() * 120;
+          createParticle(x, 80, 235, '#f85149', i * 50);
+        }
+        setTimeout(function() {
+          dbNode.className = 'svg-node overloaded';
+          setDbLoad(96);
+          statQps.textContent = '5000→DB';
+          comparison.style.opacity = '1';
+        }, 800);
+        return;
+      }
+      ttlText.textContent = 'TTL: ' + ttl + 's';
+      if (ttl <= 3) {
+        ttlText.setAttribute('fill', '#f85149');
+      }
+      ttl--;
+      animTimer = setTimeout(countdown, 500);
+    }
+    countdown();
+  }
+
+  function simulateNeverExpire() {
+    resetSim();
+    document.getElementById('btn-bd-neverexpire').classList.add('done');
+    ttlText.textContent = 'TTL: ∞ (never expire)';
+    ttlText.setAttribute('fill', '#3fb950');
+    hotKeyNode.querySelector('rect').setAttribute('stroke', '#3fb950');
+    statStatus.textContent = 'PERMANENT';
+    statStatus.className = 'stat-value green';
+    statQps.textContent = '5000';
+
+    // All traffic hits cache
+    qpsInterval = setInterval(function() {
+      var x = 300 + Math.random() * 100;
+      createParticle(x, 80, 120, '#3fb950', 0);
+    }, 150);
+
+    // Background refresh indicator
+    var refreshCount = 0;
+    var bgRefresh = setInterval(function() {
+      refreshCount++;
+      createParticle(350, 155, 235, '#58a6ff', 0);
+      cacheNode.className = 'svg-node active';
+      setDbLoad(8);
+      setTimeout(function() {
+        cacheNode.className = 'svg-node hit';
+        setDbLoad(5);
+      }, 600);
+      if (refreshCount >= 5) clearInterval(bgRefresh);
+    }, 2000);
+
+    cacheNode.className = 'svg-node hit';
+    setDbLoad(5);
+
+    setTimeout(function() {
+      clearInterval(qpsInterval);
+      clearParticles();
+    }, 12000);
+  }
+
+  document.getElementById('btn-bd-expire').addEventListener('click', simulateBreakdown);
+  document.getElementById('btn-bd-neverexpire').addEventListener('click', simulateNeverExpire);
+  document.getElementById('btn-bd-reset').addEventListener('click', resetSim);
+
+  // Questions
+  var q1Answered = false;
+  document.querySelectorAll('#q1 .question-option').forEach(function(opt) {
+    opt.addEventListener('click', function() {
+      if (q1Answered) return;
+      var isCorrect = this.dataset.answer === 'correct';
+      if (isCorrect) {
+        q1Answered = true;
+        this.classList.add('correct');
+        var fb = document.getElementById('q1-feedback');
+        fb.textContent = '正確！擊穿聚焦於單一個「超級熱門」的 key，而驚群涉及多個 key。';
+        fb.className = 'question-feedback visible correct';
+        var self = this;
+        document.querySelectorAll('#q1 .question-option').forEach(function(o) {
+          if (o !== self) o.classList.add('disabled');
+        });
+        setTimeout(function() {
+          document.querySelector('.k13-insight').classList.add('visible');
+        }, 600);
+      } else {
+        this.classList.add('incorrect');
+        var fb = document.getElementById('q1-feedback');
+        fb.textContent = '不正確。想想擊穿的特點——它是「一個」關鍵的 key。';
+        fb.className = 'question-feedback visible incorrect';
+        setTimeout(function() {
+          fb.classList.remove('visible');
+          setTimeout(function() { fb.classList.remove('incorrect'); }, 300);
+        }, 2000);
+      }
+    });
+  });
+})();
+</script>
+
+</body>
+</html>

@@ -1,0 +1,371 @@
+<!DOCTYPE html>
+<html lang="zh-TW">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Cache Koans — LRU 淘汰策略</title>
+  <link rel="stylesheet" href="../css/shared.css">
+  <script src="../js/i18n.js"></script>
+</head>
+<body>
+
+<!-- Mobile Gate -->
+<div class="mobile-gate">
+  <div class="gate-icon">&#9776;</div>
+  <div class="gate-text" data-i18n="mobile-gate">
+    此學習路徑需要更寬的視窗。請在較大的螢幕上開啟。
+  </div>
+</div>
+
+<div class="koan-page">
+  <div class="koan-number" data-i18n="k15-number">Koan 15</div>
+  <h1 class="koan-title" data-i18n="k15-title">LRU 淘汰策略</h1>
+  <p class="koan-zen" data-i18n="k15-zen">空間有限。師父說：「留下你最近用過的，忘記你久未碰觸的。」</p>
+
+  <div class="koan-section-title" data-i18n="k15-section-explain">理解</div>
+  <p class="koan-text" data-i18n="k15-explain1">LRU（Least Recently Used，最近最少使用）是最常見的快取淘汰策略。當快取空間已滿，需要加入新項目時，移除最久未被存取的項目。</p>
+  <p class="koan-text" data-i18n="k15-explain2">其背後的假設是：最近被使用過的資料，在不久的將來更可能再次被使用。這個假設在大多數場景中成立，因此 LRU 成為最廣泛採用的淘汰策略。</p>
+
+  <div class="koan-section-title" data-i18n="k15-section-sim">模擬</div>
+  <p class="koan-text" data-i18n="k15-sim-desc">這是一個容量為 4 的 LRU 快取。點擊快取中的項目來「存取」它（更新時間戳），或點擊「加入新項目」來觸發淘汰。</p>
+
+  <div class="koan-interactive">
+    <div class="stats-row" style="margin-bottom:1rem">
+      <div class="stat-item">
+        <div class="stat-value blue" id="lru-stat-size">0 / 4</div>
+        <div class="stat-label" data-i18n="k15-stat-size">快取使用量</div>
+      </div>
+      <div class="stat-item">
+        <div class="stat-value green" id="lru-stat-hits">0</div>
+        <div class="stat-label" data-i18n="k15-stat-hits">命中次數</div>
+      </div>
+      <div class="stat-item">
+        <div class="stat-value red" id="lru-stat-evictions">0</div>
+        <div class="stat-label" data-i18n="k15-stat-evictions">淘汰次數</div>
+      </div>
+    </div>
+
+    <table class="cache-table" id="lru-table">
+      <thead>
+        <tr>
+          <th data-i18n="k15-th-slot">插槽</th>
+          <th data-i18n="k15-th-key">Key</th>
+          <th data-i18n="k15-th-value">Value</th>
+          <th data-i18n="k15-th-accessed">最後存取</th>
+          <th data-i18n="k15-th-action">操作</th>
+        </tr>
+      </thead>
+      <tbody id="lru-tbody">
+      </tbody>
+    </table>
+
+    <div style="margin-top:0.5rem;font-size:0.75rem;color:var(--text-dim)" id="lru-log" data-i18n="k15-log-empty">等待操作...</div>
+
+    <div style="margin-top:1.5rem;display:flex;gap:1rem;flex-wrap:wrap">
+      <button class="action-btn" id="btn-lru-add" data-i18n="k15-btn-add">加入新項目</button>
+      <button class="action-btn" id="btn-lru-fill" data-i18n="k15-btn-fill">快速填滿</button>
+      <button class="action-btn" id="btn-lru-reset" data-i18n="k15-btn-reset">重設</button>
+    </div>
+  </div>
+
+  <div class="koan-section-title" data-i18n="k15-section-ds">資料結構</div>
+  <p class="koan-text" data-i18n="k15-ds-explain">高效的 LRU 實作使用 HashMap + 雙向鏈結串列，達到 O(1) 的 get 和 put 操作。</p>
+
+  <div class="koan-interactive">
+    <div class="diagram-container">
+      <svg viewBox="0 0 700 180" id="lru-ds-svg">
+        <!-- HashMap -->
+        <g class="svg-node">
+          <rect x="20" y="30" width="120" height="120" rx="8" fill="#111820" stroke="#6a7280" stroke-width="1.5"/>
+          <text x="80" y="22" fill="#6a7280" font-size="10" text-anchor="middle">HashMap</text>
+          <text x="80" y="55" fill="#58a6ff" font-size="9" text-anchor="middle">key → node ptr</text>
+          <text x="80" y="75" fill="#a5a5a5" font-size="9" text-anchor="middle">O(1) lookup</text>
+          <text x="80" y="105" fill="#6a7280" font-size="22" text-anchor="middle">{}</text>
+        </g>
+        <!-- Arrow -->
+        <line x1="140" y1="90" x2="180" y2="90" stroke="rgba(255,255,255,0.15)" stroke-width="1.5" marker-end="url(#arrow)"/>
+        <!-- Doubly Linked List -->
+        <g class="svg-node" id="dll-head">
+          <rect x="180" y="60" width="80" height="60" rx="6" fill="#111820" stroke="#3fb950" stroke-width="1.5"/>
+          <text x="220" y="82" fill="#3fb950" font-size="9" text-anchor="middle">HEAD</text>
+          <text x="220" y="100" fill="#a5a5a5" font-size="8" text-anchor="middle" data-i18n="k15-ds-newest">最新</text>
+        </g>
+        <line x1="260" y1="90" x2="300" y2="90" stroke="rgba(255,255,255,0.15)" stroke-width="1.5"/>
+        <g class="svg-node">
+          <rect x="300" y="60" width="80" height="60" rx="6" fill="#111820" stroke="#6a7280" stroke-width="1.5"/>
+          <text x="340" y="85" fill="#a5a5a5" font-size="9" text-anchor="middle">↔</text>
+          <text x="340" y="100" fill="#6a7280" font-size="8" text-anchor="middle">node</text>
+        </g>
+        <line x1="380" y1="90" x2="420" y2="90" stroke="rgba(255,255,255,0.15)" stroke-width="1.5"/>
+        <g class="svg-node">
+          <rect x="420" y="60" width="80" height="60" rx="6" fill="#111820" stroke="#6a7280" stroke-width="1.5"/>
+          <text x="460" y="85" fill="#a5a5a5" font-size="9" text-anchor="middle">↔</text>
+          <text x="460" y="100" fill="#6a7280" font-size="8" text-anchor="middle">node</text>
+        </g>
+        <line x1="500" y1="90" x2="540" y2="90" stroke="rgba(255,255,255,0.15)" stroke-width="1.5"/>
+        <g class="svg-node" id="dll-tail">
+          <rect x="540" y="60" width="80" height="60" rx="6" fill="#111820" stroke="#f85149" stroke-width="1.5"/>
+          <text x="580" y="82" fill="#f85149" font-size="9" text-anchor="middle">TAIL</text>
+          <text x="580" y="100" fill="#a5a5a5" font-size="8" text-anchor="middle" data-i18n="k15-ds-oldest">最舊 (淘汰)</text>
+        </g>
+        <!-- Labels -->
+        <text x="350" y="155" fill="#6a7280" font-size="10" text-anchor="middle" data-i18n="k15-ds-complexity">get() = O(1)　put() = O(1)　evict() = O(1)</text>
+        <!-- Arrow marker -->
+        <defs>
+          <marker id="arrow" markerWidth="8" markerHeight="6" refX="8" refY="3" orient="auto">
+            <path d="M0,0 L8,3 L0,6" fill="rgba(255,255,255,0.15)"/>
+          </marker>
+        </defs>
+      </svg>
+    </div>
+  </div>
+
+  <div class="koan-section-title" data-i18n="k15-section-question">思考</div>
+
+  <div class="question-group visible" id="q1">
+    <div class="question-label" data-i18n="k15-q1">最佳 LRU 實作的時間複雜度是多少？</div>
+    <div class="question-options">
+      <div class="question-option" data-answer="correct" data-i18n="k15-q1-a">O(1)，使用 HashMap + 雙向鏈結串列</div>
+      <div class="question-option" data-answer="wrong" data-i18n="k15-q1-b">O(n)，使用陣列</div>
+      <div class="question-option" data-answer="wrong" data-i18n="k15-q1-c">O(log n)，使用樹</div>
+    </div>
+    <div class="question-feedback" id="q1-feedback"></div>
+  </div>
+
+  <div class="k15-insight">
+    <div class="insight-box">
+      <div class="insight-label" data-i18n="k15-insight-label">洞察</div>
+      <div class="insight-text" data-i18n-html="k15-insight-text">LRU 透過 <code>HashMap</code>（O(1) 查找）加上<code>雙向鏈結串列</code>（O(1) 插入/刪除/移動到頭部）實現所有操作 O(1)。被廣泛使用於 Linux 頁面快取、大多數 Web 框架、CDN，以及 Redis 的淘汰策略中。變體包括 LRU-K（考慮最近 K 次存取）和分段 LRU（分為「保護」與「觀察」區）。</div>
+    </div>
+  </div>
+</div>
+
+<script src="../js/progress.js"></script>
+<script src="../js/scroll.js"></script>
+<script>
+(function() {
+  'use strict';
+
+  var CAPACITY = 4;
+  var cache = []; // Array of {key, value, lastAccess, timestamp}
+  var hits = 0;
+  var evictions = 0;
+  var nextId = 1;
+  var accessCounter = 0;
+
+  var sampleKeys = [
+    {key: 'user:1001', value: '{name:"Alice"}'},
+    {key: 'product:42', value: '{price:99}'},
+    {key: 'session:xyz', value: '{token:"..."}'},
+    {key: 'order:789', value: '{total:250}'},
+    {key: 'config:app', value: '{theme:"dark"}'},
+    {key: 'user:2002', value: '{name:"Bob"}'},
+    {key: 'product:88', value: '{price:149}'},
+    {key: 'post:1234', value: '{title:"Hello"}'},
+    {key: 'comment:56', value: '{text:"Great!"}'},
+    {key: 'tag:redis', value: '{count:3201}'}
+  ];
+
+  function getTimeAgo(ts) {
+    var diff = accessCounter - ts;
+    if (diff === 0) return 'just now';
+    return diff + ' ops ago';
+  }
+
+  function renderTable() {
+    var tbody = document.getElementById('lru-tbody');
+    tbody.innerHTML = '';
+
+    // Sort by timestamp descending (most recent first) for display
+    var sorted = cache.slice().sort(function(a, b) { return b.timestamp - a.timestamp; });
+
+    for (var i = 0; i < CAPACITY; i++) {
+      var tr = document.createElement('tr');
+      if (i < sorted.length) {
+        var item = sorted[i];
+        var isOldest = cache.length >= CAPACITY && item === cache.reduce(function(min, c) {
+          return c.timestamp < min.timestamp ? c : min;
+        }, cache[0]);
+
+        tr.innerHTML = '<td>' + (i + 1) + '</td>' +
+          '<td style="color:var(--accent-cyan)">' + item.key + '</td>' +
+          '<td>' + item.value + '</td>' +
+          '<td>' + getTimeAgo(item.timestamp) + '</td>' +
+          '<td><button class="action-btn" style="padding:0.3rem 0.8rem;font-size:0.75rem" data-key="' + item.key + '">Access</button></td>';
+
+        if (isOldest && cache.length >= CAPACITY) {
+          tr.style.borderLeft = '2px solid var(--accent-red)';
+          tr.title = 'LRU candidate — will be evicted next';
+        }
+
+        // Bind access button
+        (function(key) {
+          tr.querySelector('button').addEventListener('click', function() {
+            accessItem(key);
+          });
+        })(item.key);
+      } else {
+        tr.innerHTML = '<td style="color:var(--text-dim)">' + (i + 1) + '</td>' +
+          '<td style="color:var(--text-dim)">—</td>' +
+          '<td style="color:var(--text-dim)">—</td>' +
+          '<td style="color:var(--text-dim)">—</td>' +
+          '<td style="color:var(--text-dim)">—</td>';
+      }
+      tbody.appendChild(tr);
+    }
+
+    document.getElementById('lru-stat-size').textContent = cache.length + ' / ' + CAPACITY;
+    document.getElementById('lru-stat-hits').textContent = hits;
+    document.getElementById('lru-stat-evictions').textContent = evictions;
+  }
+
+  function accessItem(key) {
+    accessCounter++;
+    var found = cache.find(function(c) { return c.key === key; });
+    if (found) {
+      found.timestamp = accessCounter;
+      hits++;
+      setLog('HIT: ' + key + ' accessed — moved to most recent');
+
+      // Flash accessed state
+      renderTable();
+      var rows = document.getElementById('lru-tbody').querySelectorAll('tr');
+      rows[0].classList.add('accessed');
+      setTimeout(function() { rows[0].classList.remove('accessed'); }, 800);
+    }
+  }
+
+  function addItem() {
+    accessCounter++;
+    var sample = sampleKeys[nextId % sampleKeys.length];
+    nextId++;
+
+    // Check if already in cache
+    var existing = cache.find(function(c) { return c.key === sample.key; });
+    if (existing) {
+      existing.timestamp = accessCounter;
+      hits++;
+      setLog('HIT: ' + sample.key + ' already in cache');
+      renderTable();
+      return;
+    }
+
+    var newItem = {
+      key: sample.key,
+      value: sample.value,
+      timestamp: accessCounter
+    };
+
+    if (cache.length >= CAPACITY) {
+      // Find LRU (smallest timestamp)
+      var lruItem = cache.reduce(function(min, c) {
+        return c.timestamp < min.timestamp ? c : min;
+      }, cache[0]);
+      var lruKey = lruItem.key;
+
+      // Show evicting animation
+      renderTable();
+      var rows = document.getElementById('lru-tbody').querySelectorAll('tr');
+      // Find the row with the LRU item
+      rows.forEach(function(row) {
+        if (row.querySelector('td:nth-child(2)') &&
+            row.querySelector('td:nth-child(2)').textContent === lruKey) {
+          row.classList.add('evicting');
+        }
+      });
+
+      setTimeout(function() {
+        cache = cache.filter(function(c) { return c.key !== lruKey; });
+        evictions++;
+        cache.push(newItem);
+        setLog('EVICT: ' + lruKey + ' (LRU) → INSERT: ' + sample.key);
+        renderTable();
+
+        // Flash new entry
+        var newRows = document.getElementById('lru-tbody').querySelectorAll('tr');
+        newRows[0].classList.add('new-entry');
+        setTimeout(function() { newRows[0].classList.remove('new-entry'); }, 800);
+      }, 600);
+    } else {
+      cache.push(newItem);
+      setLog('INSERT: ' + sample.key);
+      renderTable();
+
+      var newRows = document.getElementById('lru-tbody').querySelectorAll('tr');
+      newRows[0].classList.add('new-entry');
+      setTimeout(function() { newRows[0].classList.remove('new-entry'); }, 800);
+    }
+  }
+
+  function fillCache() {
+    if (cache.length >= CAPACITY) {
+      setLog('Cache is already full!');
+      return;
+    }
+    var toFill = CAPACITY - cache.length;
+    for (var i = 0; i < toFill; i++) {
+      (function(delay) {
+        setTimeout(function() { addItem(); }, delay);
+      })(i * 400);
+    }
+  }
+
+  function setLog(msg) {
+    document.getElementById('lru-log').textContent = msg;
+    document.getElementById('lru-log').removeAttribute('data-i18n');
+  }
+
+  function resetSim() {
+    cache = [];
+    hits = 0;
+    evictions = 0;
+    nextId = 1;
+    accessCounter = 0;
+    document.getElementById('lru-log').textContent = '等待操作...';
+    document.getElementById('lru-log').setAttribute('data-i18n', 'k15-log-empty');
+    renderTable();
+  }
+
+  document.getElementById('btn-lru-add').addEventListener('click', addItem);
+  document.getElementById('btn-lru-fill').addEventListener('click', fillCache);
+  document.getElementById('btn-lru-reset').addEventListener('click', resetSim);
+
+  // Initial render
+  renderTable();
+
+  // Questions
+  var q1Answered = false;
+  document.querySelectorAll('#q1 .question-option').forEach(function(opt) {
+    opt.addEventListener('click', function() {
+      if (q1Answered) return;
+      var isCorrect = this.dataset.answer === 'correct';
+      if (isCorrect) {
+        q1Answered = true;
+        this.classList.add('correct');
+        var fb = document.getElementById('q1-feedback');
+        fb.textContent = '正確！HashMap 提供 O(1) 查找，雙向鏈結串列提供 O(1) 移動節點。';
+        fb.className = 'question-feedback visible correct';
+        var self = this;
+        document.querySelectorAll('#q1 .question-option').forEach(function(o) {
+          if (o !== self) o.classList.add('disabled');
+        });
+        setTimeout(function() {
+          document.querySelector('.k15-insight').classList.add('visible');
+        }, 600);
+      } else {
+        this.classList.add('incorrect');
+        var fb = document.getElementById('q1-feedback');
+        fb.textContent = '不正確。想想哪種資料結構組合能同時提供快速查找和快速重排。';
+        fb.className = 'question-feedback visible incorrect';
+        setTimeout(function() {
+          fb.classList.remove('visible');
+          setTimeout(function() { fb.classList.remove('incorrect'); }, 300);
+        }, 2000);
+      }
+    });
+  });
+})();
+</script>
+
+</body>
+</html>

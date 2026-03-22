@@ -1,0 +1,257 @@
+<!DOCTYPE html>
+<html lang="zh-TW">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Cache Koan 22 - Hot Key Problem</title>
+  <link rel="stylesheet" href="../css/shared.css">
+  <script src="../js/i18n.js"></script>
+</head>
+<body>
+
+<div class="mobile-gate">
+  <div class="gate-icon">&#9776;</div>
+  <div class="gate-text" data-i18n="mobile-gate">此學習路徑需要更寬的視窗。請在較大的螢幕上開啟。</div>
+</div>
+
+<div class="koan-page">
+  <div class="koan-number" data-i18n="k22-number">Koan 22</div>
+  <h1 class="koan-title" data-i18n="k22-title">熱鍵問題</h1>
+  <p class="koan-zen" data-i18n="k22-zen">「萬條河流匯入一點。那一點承受不住。」</p>
+
+  <h2 class="koan-section-title" data-i18n="k22-section-explain">理解</h2>
+  <p class="koan-text" data-i18n="k22-explain">當單一快取鍵承受了不成比例的流量時（例如爆紅的內容、限時搶購），即使分散式快取也可能不堪負荷——因為所有對該鍵的請求都路由到同一個分片節點。這就是「熱鍵問題」。</p>
+
+  <h2 class="koan-section-title" data-i18n="k22-section-interactive">流量分佈視覺化</h2>
+  <p class="koan-text" data-i18n="k22-interactive-desc">觀察請求如何分佈在快取節點上。點擊按鈕模擬不同場景。</p>
+
+  <div class="koan-interactive">
+    <div class="diagram-container">
+      <svg viewBox="0 0 700 300" id="hotkey-svg">
+        <text x="350" y="20" fill="#a5a5a5" font-size="12" text-anchor="middle" data-i18n="k22-svg-title">快取節點流量分佈</text>
+        <!-- Node boxes -->
+        <g class="svg-node" id="node-0">
+          <rect x="50" y="50" width="100" height="40" rx="6" fill="#111820" stroke="#6a7280" stroke-width="2"/>
+          <text x="100" y="75" fill="#e0e0e0" font-size="11" text-anchor="middle">Node 0</text>
+        </g>
+        <g class="svg-node" id="node-1">
+          <rect x="190" y="50" width="100" height="40" rx="6" fill="#111820" stroke="#6a7280" stroke-width="2"/>
+          <text x="240" y="75" fill="#e0e0e0" font-size="11" text-anchor="middle">Node 1</text>
+        </g>
+        <g class="svg-node" id="node-2">
+          <rect x="330" y="50" width="100" height="40" rx="6" fill="#111820" stroke="#6a7280" stroke-width="2"/>
+          <text x="380" y="75" fill="#e0e0e0" font-size="11" text-anchor="middle">Node 2</text>
+        </g>
+        <g class="svg-node" id="node-3">
+          <rect x="470" y="50" width="100" height="40" rx="6" fill="#111820" stroke="#6a7280" stroke-width="2"/>
+          <text x="520" y="75" fill="#e0e0e0" font-size="11" text-anchor="middle">Node 3</text>
+        </g>
+        <!-- Request count labels -->
+        <text x="100" y="115" fill="#a5a5a5" font-size="11" text-anchor="middle" id="count-0">0 req/s</text>
+        <text x="240" y="115" fill="#a5a5a5" font-size="11" text-anchor="middle" id="count-1">0 req/s</text>
+        <text x="380" y="115" fill="#a5a5a5" font-size="11" text-anchor="middle" id="count-2">0 req/s</text>
+        <text x="520" y="115" fill="#a5a5a5" font-size="11" text-anchor="middle" id="count-3">0 req/s</text>
+      </svg>
+    </div>
+
+    <!-- Load meters for each node -->
+    <div style="display:grid;grid-template-columns:repeat(4,1fr);gap:1rem;margin-bottom:1.5rem">
+      <div>
+        <div style="font-size:0.75rem;color:var(--text-dim);text-align:center">Node 0</div>
+        <div class="load-meter"><div class="load-meter-fill" id="load-0" style="width:0%"></div></div>
+      </div>
+      <div>
+        <div style="font-size:0.75rem;color:var(--text-dim);text-align:center">Node 1</div>
+        <div class="load-meter"><div class="load-meter-fill" id="load-1" style="width:0%"></div></div>
+      </div>
+      <div>
+        <div style="font-size:0.75rem;color:var(--text-dim);text-align:center">Node 2</div>
+        <div class="load-meter"><div class="load-meter-fill" id="load-2" style="width:0%"></div></div>
+      </div>
+      <div>
+        <div style="font-size:0.75rem;color:var(--text-dim);text-align:center">Node 3</div>
+        <div class="load-meter"><div class="load-meter-fill" id="load-3" style="width:0%"></div></div>
+      </div>
+    </div>
+
+    <div style="display:flex;gap:1rem;flex-wrap:wrap">
+      <button class="action-btn" id="btn-normal" data-i18n="k22-btn-normal">正常流量</button>
+      <button class="action-btn" id="btn-hotkey" data-i18n="k22-btn-hotkey">熱鍵出現</button>
+      <button class="action-btn" id="btn-replicate" data-i18n="k22-btn-replicate">鍵複製解決</button>
+      <button class="action-btn" id="btn-reset" data-i18n="k22-btn-reset">重設</button>
+    </div>
+  </div>
+
+  <h2 class="koan-section-title" data-i18n="k22-section-solutions">解決方案</h2>
+  <div class="system-cards">
+    <div class="system-card" id="sol-replicate">
+      <div class="card-title" data-i18n="k22-sol1-title">鍵複製</div>
+      <div class="card-output">
+        <div class="line" data-i18n="k22-sol1-desc">將熱鍵複製到多個節點：key_1, key_2, ... key_N。請求隨機路由到不同副本。</div>
+      </div>
+    </div>
+    <div class="system-card" id="sol-local">
+      <div class="card-title" data-i18n="k22-sol2-title">本地快取 + 分散式快取</div>
+      <div class="card-output">
+        <div class="line" data-i18n="k22-sol2-desc">在應用伺服器本地快取熱鍵，搭配短 TTL。大部分請求不會到達分散式快取。</div>
+      </div>
+    </div>
+    <div class="system-card" id="sol-coalesce">
+      <div class="card-title" data-i18n="k22-sol3-title">請求合併</div>
+      <div class="card-output">
+        <div class="line" data-i18n="k22-sol3-desc">對同一個鍵的多個並發請求合併為一個，結果共享給所有等待者。</div>
+      </div>
+    </div>
+  </div>
+
+  <h2 class="koan-section-title" data-i18n="k22-section-question">思考</h2>
+  <div class="question-group visible" id="q1">
+    <div class="question-label" data-i18n="k22-q1">如何緩解熱鍵問題？</div>
+    <div class="question-options">
+      <div class="question-option" data-answer="correct" data-i18n="k22-q1-a">將鍵複製到多個節點</div>
+      <div class="question-option" data-answer="wrong" data-i18n="k22-q1-b">增加 TTL</div>
+      <div class="question-option" data-answer="wrong" data-i18n="k22-q1-c">使用更大的伺服器</div>
+    </div>
+    <div class="question-feedback" id="q1-feedback"></div>
+  </div>
+
+  <div class="k22-insight">
+    <div class="insight-box">
+      <div class="insight-label" data-i18n="k22-insight-label">洞察</div>
+      <div class="insight-text" data-i18n-html="k22-insight-text">Twitter 處理爆紅推文的方式是將熱鍵扇出到多個快取副本，使用隨機鍵後綴（<code>key_1</code>, <code>key_2</code>, ... <code>key_N</code>）。請求被隨機分配到不同副本，避免單一節點過載。這種模式在任何高流量系統中都適用。</div>
+    </div>
+  </div>
+</div>
+
+<script src="../js/progress.js"></script>
+<script src="../js/scroll.js"></script>
+<script>
+(function () {
+  'use strict';
+
+  const nodeIds = [0, 1, 2, 3];
+  const loads = [0, 0, 0, 0];
+  const counts = [0, 0, 0, 0];
+  let animTimer = null;
+
+  function setNodeLoad(idx, pct) {
+    loads[idx] = pct;
+    const bar = document.getElementById('load-' + idx);
+    bar.style.width = pct + '%';
+    bar.className = 'load-meter-fill';
+    if (pct > 80) bar.classList.add('danger');
+    else if (pct > 50) bar.classList.add('warning');
+
+    const node = document.getElementById('node-' + idx);
+    node.className = 'svg-node';
+    if (pct > 80) node.classList.add('overloaded');
+    else if (pct > 50) node.classList.add('active');
+    else if (pct > 0) node.classList.add('hit');
+
+    document.getElementById('count-' + idx).textContent = counts[idx] + ' req/s';
+  }
+
+  function resetAll() {
+    if (animTimer) clearInterval(animTimer);
+    animTimer = null;
+    nodeIds.forEach(i => { counts[i] = 0; setNodeLoad(i, 0); });
+    document.querySelectorAll('.action-btn').forEach(b => b.classList.remove('done'));
+  }
+
+  function simulateNormal() {
+    resetAll();
+    document.getElementById('btn-normal').classList.add('done');
+    let tick = 0;
+    animTimer = setInterval(() => {
+      tick++;
+      nodeIds.forEach(i => {
+        counts[i] = 20 + Math.floor(Math.random() * 10);
+        setNodeLoad(i, 20 + Math.floor(Math.random() * 15));
+      });
+      if (tick > 15) clearInterval(animTimer);
+    }, 400);
+  }
+
+  function simulateHotkey() {
+    resetAll();
+    document.getElementById('btn-hotkey').classList.add('done');
+    let tick = 0;
+    animTimer = setInterval(() => {
+      tick++;
+      // Node 2 is the hot node
+      nodeIds.forEach(i => {
+        if (i === 2) {
+          counts[i] = Math.min(500 + tick * 80, 2000);
+          setNodeLoad(i, Math.min(30 + tick * 8, 98));
+        } else {
+          counts[i] = 20 + Math.floor(Math.random() * 10);
+          setNodeLoad(i, 15 + Math.floor(Math.random() * 10));
+        }
+      });
+      if (tick > 12) clearInterval(animTimer);
+    }, 400);
+  }
+
+  function simulateReplicate() {
+    resetAll();
+    document.getElementById('btn-replicate').classList.add('done');
+    let tick = 0;
+    animTimer = setInterval(() => {
+      tick++;
+      // Traffic spread across all nodes
+      nodeIds.forEach(i => {
+        counts[i] = 120 + Math.floor(Math.random() * 40);
+        setNodeLoad(i, 35 + Math.floor(Math.random() * 15));
+      });
+      if (tick > 15) clearInterval(animTimer);
+    }, 400);
+  }
+
+  document.getElementById('btn-normal').addEventListener('click', simulateNormal);
+  document.getElementById('btn-hotkey').addEventListener('click', simulateHotkey);
+  document.getElementById('btn-replicate').addEventListener('click', simulateReplicate);
+  document.getElementById('btn-reset').addEventListener('click', resetAll);
+
+  // Solution cards - reveal on click
+  document.querySelectorAll('.system-cards .system-card').forEach(card => {
+    card.addEventListener('click', () => {
+      if (card.classList.contains('clicked')) return;
+      card.classList.add('clicked');
+      card.querySelectorAll('.line').forEach(l => l.classList.add('visible'));
+    });
+  });
+
+  // --- Question ---
+  let q1Answered = false;
+  document.querySelectorAll('#q1 .question-option').forEach(opt => {
+    opt.addEventListener('click', () => {
+      if (q1Answered) return;
+      const isCorrect = opt.getAttribute('data-answer') === 'correct';
+      if (isCorrect) {
+        q1Answered = true;
+        opt.classList.add('correct');
+        const fb = document.getElementById('q1-feedback');
+        fb.textContent = '\u2713 \u6B63\u78BA\uFF01\u5C07\u71B1\u9375\u8907\u88FD\u5230\u591A\u500B\u7BC0\u9EDE\u53EF\u4EE5\u5206\u6563\u8CA0\u8F09\u3002';
+        fb.classList.add('visible', 'correct');
+        document.querySelectorAll('#q1 .question-option').forEach(o => {
+          if (o !== opt) o.classList.add('disabled');
+        });
+        setTimeout(() => {
+          document.querySelector('.k22-insight').classList.add('visible');
+        }, 600);
+      } else {
+        opt.classList.add('incorrect');
+        const fb = document.getElementById('q1-feedback');
+        fb.textContent = '\u2717 \u589E\u52A0 TTL \u6216\u4F3A\u670D\u5668\u5927\u5C0F\u7121\u6CD5\u89E3\u6C7A\u55AE\u4E00\u7BC0\u9EDE\u904E\u8F09\u7684\u554F\u984C\u3002';
+        fb.classList.add('visible', 'incorrect');
+        setTimeout(() => {
+          fb.classList.remove('visible');
+          setTimeout(() => fb.classList.remove('incorrect'), 300);
+        }, 2000);
+      }
+    });
+  });
+})();
+</script>
+</body>
+</html>

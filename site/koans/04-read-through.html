@@ -1,0 +1,279 @@
+<!DOCTYPE html>
+<html lang="zh-TW">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Cache Koans — Read-Through 模式</title>
+  <link rel="stylesheet" href="../css/shared.css">
+  <script src="../js/i18n.js"></script>
+</head>
+<body>
+
+<!-- Mobile Gate -->
+<div class="mobile-gate">
+  <div class="gate-icon">&#9776;</div>
+  <div class="gate-text" data-i18n="mobile-gate">
+    此學習路徑需要更寬的視窗。請在較大的螢幕上開啟。
+  </div>
+</div>
+
+<div class="koan-page">
+  <div class="koan-number" data-i18n="k04-number">Koan 04</div>
+  <h1 class="koan-title" data-i18n="k04-title">Read-Through 快取模式</h1>
+  <p class="koan-zen" data-i18n="k04-zen">弟子說：「我不想自己管快取。」師父說：「那就讓快取自己管自己。」</p>
+
+  <div class="koan-section-title" data-i18n="k04-section-concept">概念</div>
+  <p class="koan-text" data-i18n="k04-text1">Read-Through 模式與 Cache-Aside 類似，但有一個關鍵區別：在 Read-Through 中，快取層本身負責在未命中時從資料庫取得資料。應用程式只需要與快取溝通，不需要知道資料庫的存在。</p>
+  <p class="koan-text" data-i18n="k04-text2">這簡化了應用程式的程式碼，但也意味著你的應用程式與快取層的耦合更緊密。</p>
+
+  <div class="koan-section-title" data-i18n="k04-section-compare">比較圖解</div>
+  <p class="koan-text" data-i18n="k04-text-compare">點擊下方卡片，觀察兩種模式中資料流的差異。</p>
+
+  <div class="system-cards">
+    <div class="system-card" id="card-cache-aside">
+      <div class="card-title" data-i18n="k04-card-aside-title">Cache-Aside 模式</div>
+      <div class="card-output">
+        <div class="line" data-i18n="k04-aside-step1">1. 應用程式 → 快取（查詢）</div>
+        <div class="line" data-i18n="k04-aside-step2">2. 快取 → 應用程式（未命中）</div>
+        <div class="line" data-i18n="k04-aside-step3">3. 應用程式 → 資料庫（讀取）</div>
+        <div class="line" data-i18n="k04-aside-step4">4. 應用程式 → 快取（寫入）</div>
+      </div>
+    </div>
+    <div class="system-card" id="card-read-through">
+      <div class="card-title" data-i18n="k04-card-rt-title">Read-Through 模式</div>
+      <div class="card-output">
+        <div class="line" data-i18n="k04-rt-step1">1. 應用程式 → 快取（查詢）</div>
+        <div class="line" data-i18n="k04-rt-step2">2. 快取 → 資料庫（自動讀取）</div>
+        <div class="line" data-i18n="k04-rt-step3">3. 快取自動儲存資料</div>
+        <div class="line" data-i18n="k04-rt-step4">4. 快取 → 應用程式（返回資料）</div>
+      </div>
+    </div>
+  </div>
+
+  <div class="koan-section-title" data-i18n="k04-section-diagram">動態圖解</div>
+  <p class="koan-text" data-i18n="k04-text-diagram">點擊按鈕切換模式，觀察資料在未命中時的流向差異。</p>
+
+  <div class="koan-interactive">
+    <div class="diagram-container" id="flow-diagram">
+      <svg viewBox="0 0 700 200" xmlns="http://www.w3.org/2000/svg">
+        <!-- Edges -->
+        <path id="edge-1" d="M 140 100 L 270 100" stroke="rgba(255,255,255,0.08)" stroke-width="1.5" fill="none"/>
+        <path id="edge-2" d="M 350 100 L 470 100" stroke="rgba(255,255,255,0.08)" stroke-width="1.5" fill="none"/>
+        <path id="edge-aside-direct" d="M 100 130 L 100 170 L 510 170 L 510 130" stroke="transparent" stroke-width="1.5" fill="none" stroke-dasharray="4,4"/>
+
+        <!-- App Node -->
+        <g class="svg-node" id="node-app" transform="translate(60, 70)">
+          <rect width="80" height="60" fill="rgba(22,27,34,0.8)" stroke="rgba(255,255,255,0.08)" stroke-width="1.5" rx="8"/>
+          <text x="40" y="25" text-anchor="middle" font-family="var(--font-mono)" font-size="11" fill="#6a7280" data-i18n="k04-diag-app">應用程式</text>
+          <text x="40" y="45" text-anchor="middle" font-size="18">&#9881;</text>
+        </g>
+
+        <!-- Cache Node -->
+        <g class="svg-node" id="node-cache" transform="translate(260, 70)">
+          <rect width="80" height="60" fill="rgba(22,27,34,0.8)" stroke="rgba(255,255,255,0.08)" stroke-width="1.5" rx="8"/>
+          <text x="40" y="25" text-anchor="middle" font-family="var(--font-mono)" font-size="11" fill="#6a7280" data-i18n="k04-diag-cache">快取</text>
+          <text x="40" y="45" text-anchor="middle" font-size="18">&#9889;</text>
+        </g>
+
+        <!-- DB Node -->
+        <g class="svg-node" id="node-db" transform="translate(470, 70)">
+          <rect width="80" height="60" fill="rgba(22,27,34,0.8)" stroke="rgba(255,255,255,0.08)" stroke-width="1.5" rx="8"/>
+          <text x="40" y="25" text-anchor="middle" font-family="var(--font-mono)" font-size="11" fill="#6a7280" data-i18n="k04-diag-db">資料庫</text>
+          <text x="40" y="45" text-anchor="middle" font-size="18">&#128451;</text>
+        </g>
+
+        <!-- Flow description -->
+        <text id="flow-desc" x="350" y="30" text-anchor="middle" font-family="var(--font-mono)" font-size="12" fill="#6a7280"></text>
+
+        <!-- Arrow labels for current mode -->
+        <text id="arrow-1" x="200" y="90" text-anchor="middle" font-family="var(--font-mono)" font-size="9" fill="transparent"></text>
+        <text id="arrow-2" x="410" y="90" text-anchor="middle" font-family="var(--font-mono)" font-size="9" fill="transparent"></text>
+        <text id="arrow-3" x="310" y="185" text-anchor="middle" font-family="var(--font-mono)" font-size="9" fill="transparent"></text>
+      </svg>
+    </div>
+
+    <div style="display:flex; gap:1rem; align-items:center; flex-wrap:wrap;">
+      <button class="action-btn" id="btn-show-aside" data-i18n="k04-btn-aside">演示 Cache-Aside</button>
+      <button class="action-btn" id="btn-show-rt" data-i18n="k04-btn-rt">演示 Read-Through</button>
+    </div>
+  </div>
+
+  <div class="koan-section-title" data-i18n="k04-section-question">思考</div>
+  <div class="question-group visible" id="q1">
+    <div class="question-label" data-i18n="k04-q1">Cache-Aside 和 Read-Through 的關鍵差異是什麼？</div>
+    <div class="question-options">
+      <div class="question-option" data-answer="correct" data-i18n="k04-q1-a1">誰負責在未命中時取得資料</div>
+      <div class="question-option" data-answer="incorrect" data-i18n="k04-q1-a2">快取的大小限制</div>
+      <div class="question-option" data-answer="incorrect" data-i18n="k04-q1-a3">淘汰策略的不同</div>
+    </div>
+    <div class="question-feedback" id="q1-feedback"></div>
+  </div>
+
+  <div class="k04-insight">
+    <div class="insight-box" id="insight-box">
+      <div class="insight-label" data-i18n="k04-insight-label">洞察</div>
+      <div class="insight-text" data-i18n-html="k04-insight-text">
+        Read-Through 把「從哪裡取資料」的邏輯從應用程式移到了快取層。<br><br>
+        <strong>好處</strong>：應用程式的程式碼更簡單——它只需要說「給我這個資料」，不需要關心資料從哪來。<br><br>
+        <strong>代價</strong>：你的快取層變得更複雜，而且應用程式對快取層的依賴更深。如果快取層掛了，應用程式不知道如何直接去資料庫取資料。<br><br>
+        常見的 Read-Through 實作包括 <code>AWS DAX</code>（DynamoDB 的 Read-Through 快取）和很多 ORM 框架的內建快取。
+      </div>
+    </div>
+  </div>
+</div>
+
+<script src="../js/progress.js"></script>
+<script src="../js/scroll.js"></script>
+<script>
+(function () {
+  'use strict';
+
+  const nodeApp = document.getElementById('node-app');
+  const nodeCache = document.getElementById('node-cache');
+  const nodeDB = document.getElementById('node-db');
+  const flowDesc = document.getElementById('flow-desc');
+  const edgeAsideDirect = document.getElementById('edge-aside-direct');
+  const arrow1 = document.getElementById('arrow-1');
+  const arrow2 = document.getElementById('arrow-2');
+  const arrow3 = document.getElementById('arrow-3');
+  let animating = false;
+
+  function resetNodes() {
+    nodeApp.classList.remove('active', 'hit', 'miss');
+    nodeCache.classList.remove('active', 'hit', 'miss');
+    nodeDB.classList.remove('active', 'hit', 'miss');
+    edgeAsideDirect.setAttribute('stroke', 'transparent');
+    arrow1.setAttribute('fill', 'transparent');
+    arrow2.setAttribute('fill', 'transparent');
+    arrow3.setAttribute('fill', 'transparent');
+    flowDesc.textContent = '';
+  }
+
+  function animateCacheAside() {
+    if (animating) return;
+    animating = true;
+    resetNodes();
+    flowDesc.textContent = 'Cache-Aside: 應用程式管理一切';
+
+    // Step 1: App checks cache
+    nodeApp.classList.add('active');
+    arrow1.textContent = '1. 查詢';
+    arrow1.setAttribute('fill', '#58a6ff');
+    setTimeout(() => {
+      nodeCache.classList.add('miss');
+      arrow1.textContent = '2. 未命中';
+      arrow1.setAttribute('fill', '#f85149');
+    }, 700);
+
+    // Step 2: App goes directly to DB
+    setTimeout(() => {
+      nodeCache.classList.remove('miss');
+      edgeAsideDirect.setAttribute('stroke', 'rgba(88, 166, 255, 0.4)');
+      arrow3.textContent = '3. 直接讀取 DB';
+      arrow3.setAttribute('fill', '#58a6ff');
+      nodeDB.classList.add('active');
+    }, 1400);
+
+    // Step 3: App writes to cache
+    setTimeout(() => {
+      edgeAsideDirect.setAttribute('stroke', 'transparent');
+      arrow3.setAttribute('fill', 'transparent');
+      nodeDB.classList.remove('active');
+      nodeCache.classList.add('hit');
+      arrow1.textContent = '4. 寫入快取';
+      arrow1.setAttribute('fill', '#3fb950');
+    }, 2100);
+
+    setTimeout(() => {
+      resetNodes();
+      animating = false;
+    }, 3500);
+  }
+
+  function animateReadThrough() {
+    if (animating) return;
+    animating = true;
+    resetNodes();
+    flowDesc.textContent = 'Read-Through: 快取自己取資料';
+
+    // Step 1: App asks cache
+    nodeApp.classList.add('active');
+    arrow1.textContent = '1. 查詢';
+    arrow1.setAttribute('fill', '#58a6ff');
+    setTimeout(() => {
+      nodeCache.classList.add('active');
+    }, 500);
+
+    // Step 2: Cache fetches from DB
+    setTimeout(() => {
+      arrow2.textContent = '2. 自動取得';
+      arrow2.setAttribute('fill', '#58a6ff');
+      nodeDB.classList.add('active');
+    }, 1000);
+
+    // Step 3: Cache stores and returns
+    setTimeout(() => {
+      nodeDB.classList.remove('active');
+      arrow2.setAttribute('fill', 'transparent');
+      nodeCache.classList.remove('active');
+      nodeCache.classList.add('hit');
+      arrow1.textContent = '3. 返回資料';
+      arrow1.setAttribute('fill', '#3fb950');
+    }, 1800);
+
+    setTimeout(() => {
+      resetNodes();
+      animating = false;
+    }, 3200);
+  }
+
+  document.getElementById('btn-show-aside').addEventListener('click', animateCacheAside);
+  document.getElementById('btn-show-rt').addEventListener('click', animateReadThrough);
+
+  // --- Cards ---
+  document.querySelectorAll('.system-card').forEach(card => {
+    card.addEventListener('click', () => {
+      if (card.classList.contains('clicked')) return;
+      card.classList.add('clicked');
+      card.querySelectorAll('.line').forEach((line, i) => {
+        setTimeout(() => line.classList.add('visible'), (i + 1) * 300);
+      });
+    });
+  });
+
+  // --- Question Logic ---
+  const q1 = document.getElementById('q1');
+  const q1Feedback = document.getElementById('q1-feedback');
+  const insightBox = document.querySelector('.k04-insight');
+  let q1Answered = false;
+
+  q1.querySelectorAll('.question-option').forEach(opt => {
+    opt.addEventListener('click', () => {
+      if (q1Answered) return;
+      const isCorrect = opt.getAttribute('data-answer') === 'correct';
+      if (isCorrect) {
+        q1Answered = true;
+        opt.classList.add('correct');
+        q1Feedback.textContent = '✓ 正確！關鍵差異在於：Cache-Aside 由應用程式取資料，Read-Through 由快取層取資料。';
+        q1Feedback.classList.add('visible', 'correct');
+        q1.querySelectorAll('.question-option').forEach(o => {
+          if (o !== opt) o.classList.add('disabled');
+        });
+        setTimeout(() => {
+          insightBox.classList.add('visible');
+        }, 600);
+      } else {
+        opt.classList.add('incorrect');
+        q1Feedback.textContent = '✗ 再想想——兩種模式的核心區別是什麼角色在做什麼事。';
+        q1Feedback.classList.add('visible', 'incorrect');
+        setTimeout(() => {
+          q1Feedback.classList.remove('visible');
+          setTimeout(() => q1Feedback.classList.remove('incorrect'), 300);
+        }, 2000);
+      }
+    });
+  });
+})();
+</script>
+</body>
+</html>

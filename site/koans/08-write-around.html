@@ -1,0 +1,257 @@
+<!DOCTYPE html>
+<html lang="zh-TW">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Cache Koans — Write-Around Cache</title>
+  <link rel="stylesheet" href="../css/shared.css">
+  <script src="../js/i18n.js"></script>
+</head>
+<body>
+
+<!-- Mobile Gate -->
+<div class="mobile-gate">
+  <div class="gate-icon">&#9776;</div>
+  <div class="gate-text" data-i18n="mobile-gate">
+    此學習路徑需要更寬的視窗。請在較大的螢幕上開啟。
+  </div>
+</div>
+
+<div class="koan-page">
+
+  <div class="koan-number" data-i18n="k08-number">Koan 08</div>
+  <h1 class="koan-title" data-i18n="k08-title">Write-Around Cache</h1>
+  <p class="koan-zen" data-i18n="k08-zen">師父說：「有時候，繞過才是最直接的路。」</p>
+
+  <h2 class="koan-section-title" data-i18n="k08-section-concept">概念</h2>
+  <p class="koan-text" data-i18n="k08-text">
+    Write-Around 策略中，寫入操作直接寫入資料庫，完全繞過快取。快取只在讀取時填充（cache miss 時從 DB 載入）。這避免了將很少被重新讀取的資料塞進快取，防止快取污染。
+  </p>
+
+  <h2 class="koan-section-title" data-i18n="k08-section-compare">策略比較</h2>
+  <p class="koan-text" data-i18n="k08-text-compare">觀察 Write-Through 和 Write-Around 兩種策略下，寫入路徑的差異。點擊按鈕模擬寫入操作。</p>
+
+  <div class="koan-interactive">
+    <div class="system-cards" id="wa-compare">
+      <!-- Write-Through Panel -->
+      <div class="system-card" id="wa-panel-wt">
+        <div class="card-title" data-i18n="k08-panel-wt-title">Write-Through</div>
+        <div class="card-output">
+          <svg viewBox="0 0 280 180" xmlns="http://www.w3.org/2000/svg" style="width:100%;height:auto;">
+            <defs>
+              <marker id="wa-arr1" markerWidth="7" markerHeight="5" refX="7" refY="2.5" orient="auto">
+                <polygon points="0 0, 7 2.5, 0 5" fill="rgba(255,255,255,0.3)"/>
+              </marker>
+            </defs>
+            <g class="svg-node" id="wa-wt-app" transform="translate(10, 60)">
+              <rect width="60" height="40" rx="6" fill="rgba(22,27,34,0.8)" stroke="rgba(255,255,255,0.08)" stroke-width="1"/>
+              <text x="30" y="18" text-anchor="middle" fill="#a5a5a5" font-size="9">App</text>
+              <text x="30" y="33" text-anchor="middle" font-size="14">&#9881;</text>
+            </g>
+            <g class="svg-node" id="wa-wt-cache" transform="translate(110, 20)">
+              <rect width="60" height="40" rx="6" fill="rgba(22,27,34,0.8)" stroke="rgba(255,255,255,0.08)" stroke-width="1"/>
+              <text x="30" y="18" text-anchor="middle" fill="#a5a5a5" font-size="9">Cache</text>
+              <text x="30" y="33" text-anchor="middle" font-size="14">&#9889;</text>
+            </g>
+            <g class="svg-node" id="wa-wt-db" transform="translate(110, 100)">
+              <rect width="60" height="40" rx="6" fill="rgba(22,27,34,0.8)" stroke="rgba(255,255,255,0.08)" stroke-width="1"/>
+              <text x="30" y="18" text-anchor="middle" fill="#a5a5a5" font-size="9">DB</text>
+              <text x="30" y="33" text-anchor="middle" font-size="14">&#128451;</text>
+            </g>
+            <!-- Arrows: App->Cache, Cache->DB -->
+            <line x1="70" y1="72" x2="108" y2="48" stroke="rgba(88,166,255,0.5)" stroke-width="1.5" marker-end="url(#wa-arr1)" id="wa-wt-line1"/>
+            <line x1="140" y1="62" x2="140" y2="98" stroke="rgba(88,166,255,0.5)" stroke-width="1.5" marker-end="url(#wa-arr1)" id="wa-wt-line2"/>
+            <text x="210" y="35" fill="#6a7280" font-size="8" font-family="var(--font-mono)" id="wa-wt-label1">1. write</text>
+            <text x="210" y="115" fill="#6a7280" font-size="8" font-family="var(--font-mono)" id="wa-wt-label2">2. sync</text>
+            <text id="wa-wt-status" x="140" y="170" text-anchor="middle" fill="#6a7280" font-size="9" font-family="var(--font-mono)"></text>
+          </svg>
+        </div>
+      </div>
+
+      <!-- Write-Around Panel -->
+      <div class="system-card" id="wa-panel-wa">
+        <div class="card-title" data-i18n="k08-panel-wa-title">Write-Around</div>
+        <div class="card-output">
+          <svg viewBox="0 0 280 180" xmlns="http://www.w3.org/2000/svg" style="width:100%;height:auto;">
+            <defs>
+              <marker id="wa-arr2" markerWidth="7" markerHeight="5" refX="7" refY="2.5" orient="auto">
+                <polygon points="0 0, 7 2.5, 0 5" fill="rgba(255,255,255,0.3)"/>
+              </marker>
+            </defs>
+            <g class="svg-node" id="wa-wa-app" transform="translate(10, 60)">
+              <rect width="60" height="40" rx="6" fill="rgba(22,27,34,0.8)" stroke="rgba(255,255,255,0.08)" stroke-width="1"/>
+              <text x="30" y="18" text-anchor="middle" fill="#a5a5a5" font-size="9">App</text>
+              <text x="30" y="33" text-anchor="middle" font-size="14">&#9881;</text>
+            </g>
+            <g class="svg-node" id="wa-wa-cache" transform="translate(110, 20)">
+              <rect width="60" height="40" rx="6" fill="rgba(22,27,34,0.8)" stroke="rgba(255,255,255,0.08)" stroke-width="1"/>
+              <text x="30" y="18" text-anchor="middle" fill="#a5a5a5" font-size="9">Cache</text>
+              <text x="30" y="33" text-anchor="middle" font-size="14">&#9889;</text>
+            </g>
+            <g class="svg-node" id="wa-wa-db" transform="translate(110, 100)">
+              <rect width="60" height="40" rx="6" fill="rgba(22,27,34,0.8)" stroke="rgba(255,255,255,0.08)" stroke-width="1"/>
+              <text x="30" y="18" text-anchor="middle" fill="#a5a5a5" font-size="9">DB</text>
+              <text x="30" y="33" text-anchor="middle" font-size="14">&#128451;</text>
+            </g>
+            <!-- Arrow: App->DB directly (bypassing cache) -->
+            <line x1="70" y1="88" x2="108" y2="112" stroke="rgba(63,185,80,0.5)" stroke-width="1.5" marker-end="url(#wa-arr2)" id="wa-wa-line1"/>
+            <!-- Dashed line to cache (not used) -->
+            <line x1="70" y1="72" x2="108" y2="48" stroke="rgba(255,255,255,0.06)" stroke-width="1" stroke-dasharray="3,3"/>
+            <text x="85" y="38" fill="#f85149" font-size="8" font-family="var(--font-mono)">&#10007;</text>
+            <text x="210" y="115" fill="#6a7280" font-size="8" font-family="var(--font-mono)">1. direct</text>
+            <text id="wa-wa-status" x="140" y="170" text-anchor="middle" fill="#6a7280" font-size="9" font-family="var(--font-mono)"></text>
+          </svg>
+        </div>
+      </div>
+    </div>
+
+    <button class="action-btn" id="wa-sim-btn" data-i18n="k08-btn-simulate">&#9654; 模擬寫入</button>
+
+    <div class="stats-row" style="margin-top:1rem;">
+      <div class="stat-item">
+        <div class="stat-value blue" id="wa-wt-items">0</div>
+        <div class="stat-label" data-i18n="k08-stat-wt-cache">WT Cache Items</div>
+      </div>
+      <div class="stat-item">
+        <div class="stat-value green" id="wa-wa-items">0</div>
+        <div class="stat-label" data-i18n="k08-stat-wa-cache">WA Cache Items</div>
+      </div>
+      <div class="stat-item">
+        <div class="stat-value orange" id="wa-total-writes">0</div>
+        <div class="stat-label" data-i18n="k08-stat-writes">Total Writes</div>
+      </div>
+    </div>
+
+    <div style="margin-top:1rem;">
+      <div style="font-size:0.8rem;color:var(--text-dim);margin-bottom:0.5rem;" data-i18n="k08-cache-pollution">Cache Pollution (Write-Through)</div>
+      <div class="load-meter">
+        <div class="load-meter-fill" id="wa-pollution-bar" style="width:0%;"></div>
+      </div>
+    </div>
+  </div>
+
+  <h2 class="koan-section-title" data-i18n="k08-section-question">思考</h2>
+  <div class="question-group visible" id="wa-q1">
+    <div class="question-label" data-i18n="k08-q1">Write-Around 最適合什麼場景？</div>
+    <div class="question-options">
+      <div class="question-option" data-correct="true" data-i18n="k08-q1-a1">寫入的資料很少被重新讀取</div>
+      <div class="question-option" data-i18n="k08-q1-a2">讀取操作很少發生</div>
+      <div class="question-option" data-i18n="k08-q1-a3">資料庫速度很慢</div>
+    </div>
+    <div class="question-feedback" id="wa-q1-feedback"></div>
+  </div>
+
+  <div class="k08-insight">
+    <div class="insight-box">
+      <div class="insight-label" data-i18n="k08-insight-label">Insight</div>
+      <div class="insight-text" data-i18n-html="k08-insight-text">
+        Write-Around 非常適合<strong>日誌記錄</strong>、<strong>審計軌跡</strong>等「寫多讀少」的場景。這些資料被寫入後，通常不會被立即或頻繁地重新讀取，放進快取只會浪費空間。<code>不汙染快取 = 讓熱資料留在快取中</code>。
+      </div>
+    </div>
+  </div>
+
+</div>
+
+<script src="../js/progress.js"></script>
+<script src="../js/scroll.js"></script>
+<script>
+(function () {
+  'use strict';
+
+  let wtCacheItems = 0;
+  let waCacheItems = 0;
+  let totalWrites = 0;
+  const maxCache = 20;
+  let running = false;
+
+  const simBtn = document.getElementById('wa-sim-btn');
+
+  async function simulateWrite() {
+    if (running) return;
+    running = true;
+    simBtn.classList.add('done');
+    totalWrites++;
+
+    // Write-Through: App -> Cache -> DB
+    const wtApp = document.getElementById('wa-wt-app');
+    const wtCache = document.getElementById('wa-wt-cache');
+    const wtDb = document.getElementById('wa-wt-db');
+    const wtStatus = document.getElementById('wa-wt-status');
+
+    wtApp.classList.add('active');
+    await new Promise(r => setTimeout(r, 300));
+    wtApp.classList.remove('active');
+    wtCache.classList.add('hit');
+    wtCacheItems = Math.min(wtCacheItems + 1, maxCache);
+    wtStatus.textContent = 'Cache \u2713 \u2192 syncing DB...';
+    await new Promise(r => setTimeout(r, 400));
+    wtDb.classList.add('hit');
+    wtStatus.textContent = 'Cache \u2713  DB \u2713';
+    await new Promise(r => setTimeout(r, 300));
+
+    // Write-Around: App -> DB directly
+    const waApp = document.getElementById('wa-wa-app');
+    const waDb = document.getElementById('wa-wa-db');
+    const waCache = document.getElementById('wa-wa-cache');
+    const waStatus = document.getElementById('wa-wa-status');
+
+    waApp.classList.add('active');
+    await new Promise(r => setTimeout(r, 300));
+    waApp.classList.remove('active');
+    waDb.classList.add('hit');
+    waStatus.textContent = 'DB \u2713 (cache skipped)';
+    // Cache not updated for write-around
+
+    // Update stats
+    document.getElementById('wa-wt-items').textContent = wtCacheItems;
+    document.getElementById('wa-wa-items').textContent = waCacheItems;
+    document.getElementById('wa-total-writes').textContent = totalWrites;
+
+    // Pollution bar
+    const pollutionPct = Math.round((wtCacheItems / maxCache) * 100);
+    const bar = document.getElementById('wa-pollution-bar');
+    bar.style.width = pollutionPct + '%';
+    bar.className = 'load-meter-fill' + (pollutionPct > 70 ? ' danger' : pollutionPct > 40 ? ' warning' : '');
+
+    await new Promise(r => setTimeout(r, 800));
+    wtCache.classList.remove('hit');
+    wtDb.classList.remove('hit');
+    waDb.classList.remove('hit');
+    wtStatus.textContent = '';
+    waStatus.textContent = '';
+    simBtn.classList.remove('done');
+    running = false;
+  }
+
+  simBtn.addEventListener('click', simulateWrite);
+
+  // --- Questions ---
+  document.querySelectorAll('#wa-q1 .question-option').forEach(opt => {
+    opt.addEventListener('click', function () {
+      if (this.classList.contains('correct') || this.classList.contains('incorrect')) return;
+      const isCorrect = this.dataset.correct === 'true';
+      const feedback = document.getElementById('wa-q1-feedback');
+
+      document.querySelectorAll('#wa-q1 .question-option').forEach(o => {
+        if (o.dataset.correct === 'true') o.classList.add('correct');
+        else o.classList.add('disabled');
+      });
+
+      if (isCorrect) {
+        feedback.textContent = '\u2713 \u6b63\u78ba\uff01\u7576\u5beb\u5165\u7684\u8cc7\u6599\u5f88\u5c11\u88ab\u91cd\u65b0\u8b80\u53d6\u6642\uff0cWrite-Around \u53ef\u4ee5\u907f\u514d\u5feb\u53d6\u6c61\u67d3\u3002';
+        feedback.className = 'question-feedback visible correct';
+      } else {
+        this.classList.add('incorrect');
+        feedback.textContent = '\u2717 \u518d\u60f3\u60f3\u2014\u2014Write-Around \u7684\u6838\u5fc3\u512a\u52e2\u662f\u907f\u514d\u5feb\u53d6\u6c61\u67d3\u3002';
+        feedback.className = 'question-feedback visible incorrect';
+      }
+
+      setTimeout(() => {
+        document.querySelector('.k08-insight').classList.add('visible');
+      }, 600);
+    });
+  });
+})();
+</script>
+</body>
+</html>

@@ -1,0 +1,351 @@
+<!DOCTYPE html>
+<html lang="zh-TW">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Cache Koans — 寫入策略總覽</title>
+  <link rel="stylesheet" href="../css/shared.css">
+  <script src="../js/i18n.js"></script>
+</head>
+<body>
+
+<!-- Mobile Gate -->
+<div class="mobile-gate">
+  <div class="gate-icon">&#9776;</div>
+  <div class="gate-text" data-i18n="mobile-gate">
+    此學習路徑需要更寬的視窗。請在較大的螢幕上開啟。
+  </div>
+</div>
+
+<div class="koan-page">
+  <div class="koan-number" data-i18n="k05-number">Koan 05</div>
+  <h1 class="koan-title" data-i18n="k05-title">寫入策略總覽</h1>
+  <p class="koan-zen" data-i18n="k05-zen">讀取是記憶的藝術。寫入是遺忘的藝術。</p>
+
+  <div class="koan-section-title" data-i18n="k05-section-concept">概念</div>
+  <p class="koan-text" data-i18n="k05-text1">當資料變更時，如何讓快取和資料庫保持同步？這是快取系統中最具挑戰性的問題之一。主要有三種寫入策略：Write-Through、Write-Behind 和 Write-Around。</p>
+  <p class="koan-text" data-i18n="k05-text2">每種策略在一致性、效能和複雜度之間做出不同的取捨。沒有完美的策略——只有最適合你場景的策略。</p>
+
+  <div class="koan-section-title" data-i18n="k05-section-strategies">三種策略</div>
+  <p class="koan-text" data-i18n="k05-text-strategies">點擊每張卡片，了解該策略的資料流程。</p>
+
+  <div class="system-cards" style="grid-template-columns: 1fr 1fr 1fr;">
+    <div class="system-card" id="card-write-through" data-strategy="write-through">
+      <div class="card-title" data-i18n="k05-wt-title">Write-Through</div>
+      <div class="card-output">
+        <div class="line" data-i18n="k05-wt-desc1">同時寫入快取和資料庫</div>
+        <div class="line" data-i18n="k05-wt-desc2">保證一致性</div>
+        <div class="line" data-i18n="k05-wt-desc3">寫入延遲較高</div>
+      </div>
+    </div>
+    <div class="system-card" id="card-write-behind" data-strategy="write-behind">
+      <div class="card-title" data-i18n="k05-wb-title">Write-Behind</div>
+      <div class="card-output">
+        <div class="line" data-i18n="k05-wb-desc1">先寫快取，稍後非同步寫入資料庫</div>
+        <div class="line" data-i18n="k05-wb-desc2">寫入速度快</div>
+        <div class="line" data-i18n="k05-wb-desc3">有資料遺失風險</div>
+      </div>
+    </div>
+    <div class="system-card" id="card-write-around" data-strategy="write-around">
+      <div class="card-title" data-i18n="k05-wa-title">Write-Around</div>
+      <div class="card-output">
+        <div class="line" data-i18n="k05-wa-desc1">只寫資料庫，不寫快取</div>
+        <div class="line" data-i18n="k05-wa-desc2">避免快取污染</div>
+        <div class="line" data-i18n="k05-wa-desc3">讀取時可能未命中</div>
+      </div>
+    </div>
+  </div>
+
+  <div class="koan-section-title" data-i18n="k05-section-animation">動態演示</div>
+  <p class="koan-text" data-i18n="k05-text-animation">點擊下方按鈕，觀察每種寫入策略的資料流動方向。</p>
+
+  <div class="koan-interactive">
+    <div class="diagram-container" id="write-diagram">
+      <svg viewBox="0 0 700 220" xmlns="http://www.w3.org/2000/svg">
+        <!-- Edges -->
+        <path id="edge-app-cache" d="M 140 110 L 280 60" stroke="rgba(255,255,255,0.08)" stroke-width="1.5" fill="none"/>
+        <path id="edge-app-db" d="M 140 110 L 280 170" stroke="rgba(255,255,255,0.08)" stroke-width="1.5" fill="none"/>
+        <path id="edge-cache-db" d="M 360 60 L 480 60 L 480 170 L 360 170" stroke="rgba(255,255,255,0.08)" stroke-width="1.5" fill="none" stroke-dasharray="4,4"/>
+
+        <!-- App Node -->
+        <g class="svg-node" id="node-app" transform="translate(60, 80)">
+          <rect width="80" height="60" fill="rgba(22,27,34,0.8)" stroke="rgba(255,255,255,0.08)" stroke-width="1.5" rx="8"/>
+          <text x="40" y="25" text-anchor="middle" font-family="var(--font-mono)" font-size="11" fill="#6a7280" data-i18n="k05-diag-app">應用程式</text>
+          <text x="40" y="45" text-anchor="middle" font-size="18">&#9881;</text>
+        </g>
+
+        <!-- Cache Node -->
+        <g class="svg-node" id="node-cache" transform="translate(280, 30)">
+          <rect width="80" height="60" fill="rgba(22,27,34,0.8)" stroke="rgba(255,255,255,0.08)" stroke-width="1.5" rx="8"/>
+          <text x="40" y="25" text-anchor="middle" font-family="var(--font-mono)" font-size="11" fill="#6a7280" data-i18n="k05-diag-cache">快取</text>
+          <text x="40" y="45" text-anchor="middle" font-size="18">&#9889;</text>
+        </g>
+
+        <!-- DB Node -->
+        <g class="svg-node" id="node-db" transform="translate(280, 140)">
+          <rect width="80" height="60" fill="rgba(22,27,34,0.8)" stroke="rgba(255,255,255,0.08)" stroke-width="1.5" rx="8"/>
+          <text x="40" y="25" text-anchor="middle" font-family="var(--font-mono)" font-size="11" fill="#6a7280" data-i18n="k05-diag-db">資料庫</text>
+          <text x="40" y="45" text-anchor="middle" font-size="18">&#128451;</text>
+        </g>
+
+        <!-- Strategy label -->
+        <text id="strategy-label" x="550" y="30" font-family="var(--font-mono)" font-size="13" fill="transparent" font-weight="600"></text>
+
+        <!-- Flow arrows (animated) -->
+        <text id="flow-step-1" x="550" y="60" font-family="var(--font-mono)" font-size="11" fill="transparent"></text>
+        <text id="flow-step-2" x="550" y="80" font-family="var(--font-mono)" font-size="11" fill="transparent"></text>
+        <text id="flow-step-3" x="550" y="100" font-family="var(--font-mono)" font-size="11" fill="transparent"></text>
+      </svg>
+    </div>
+
+    <div style="display:flex; gap:1rem; align-items:center; flex-wrap:wrap;">
+      <button class="action-btn" id="btn-wt" data-i18n="k05-btn-wt">Write-Through</button>
+      <button class="action-btn" id="btn-wb" data-i18n="k05-btn-wb">Write-Behind</button>
+      <button class="action-btn" id="btn-wa" data-i18n="k05-btn-wa">Write-Around</button>
+    </div>
+
+    <div class="stats-row" style="margin-top:1.5rem;">
+      <div class="stat-item">
+        <div class="stat-value" id="stat-consistency" style="font-size:1rem;">—</div>
+        <div class="stat-label" data-i18n="k05-stat-consistency">一致性</div>
+      </div>
+      <div class="stat-item">
+        <div class="stat-value" id="stat-write-speed" style="font-size:1rem;">—</div>
+        <div class="stat-label" data-i18n="k05-stat-speed">寫入速度</div>
+      </div>
+      <div class="stat-item">
+        <div class="stat-value" id="stat-complexity" style="font-size:1rem;">—</div>
+        <div class="stat-label" data-i18n="k05-stat-complexity">複雜度</div>
+      </div>
+      <div class="stat-item">
+        <div class="stat-value" id="stat-risk" style="font-size:1rem;">—</div>
+        <div class="stat-label" data-i18n="k05-stat-risk">資料遺失風險</div>
+      </div>
+    </div>
+  </div>
+
+  <div class="koan-section-title" data-i18n="k05-section-question">思考</div>
+  <div class="question-group visible" id="q1">
+    <div class="question-label" data-i18n="k05-q1">為什麼快取的寫入比讀取更複雜？</div>
+    <div class="question-options">
+      <div class="question-option" data-answer="correct" data-i18n="k05-q1-a1">需要維護快取與資料庫之間的一致性</div>
+      <div class="question-option" data-answer="incorrect" data-i18n="k05-q1-a2">寫入速度比讀取慢</div>
+      <div class="question-option" data-answer="incorrect" data-i18n="k05-q1-a3">寫入需要更多記憶體</div>
+    </div>
+    <div class="question-feedback" id="q1-feedback"></div>
+  </div>
+
+  <div class="k05-insight">
+    <div class="insight-box" id="insight-box">
+      <div class="insight-label" data-i18n="k05-insight-label">洞察</div>
+      <div class="insight-text" data-i18n-html="k05-insight-text">
+        沒有完美的寫入策略，每種都是一種取捨：<br><br>
+        <strong>Write-Through</strong>：像是寄掛號信——確保對方一定收到，但你要等確認回函。<br>
+        <strong>Write-Behind</strong>：像是把信丟進郵筒就走——速度快，但信可能會丟。<br>
+        <strong>Write-Around</strong>：像是直接打電話告訴對方——跳過中間人，但中間人不知道最新消息。<br><br>
+        選擇哪種策略取決於你的系統更重視什麼：<code>一致性</code>、<code>效能</code>，還是<code>簡單性</code>？
+      </div>
+    </div>
+  </div>
+</div>
+
+<script src="../js/progress.js"></script>
+<script src="../js/scroll.js"></script>
+<script>
+(function () {
+  'use strict';
+
+  const nodeApp = document.getElementById('node-app');
+  const nodeCache = document.getElementById('node-cache');
+  const nodeDB = document.getElementById('node-db');
+  const edgeAppCache = document.getElementById('edge-app-cache');
+  const edgeAppDB = document.getElementById('edge-app-db');
+  const edgeCacheDB = document.getElementById('edge-cache-db');
+  const strategyLabel = document.getElementById('strategy-label');
+  const flowSteps = [
+    document.getElementById('flow-step-1'),
+    document.getElementById('flow-step-2'),
+    document.getElementById('flow-step-3')
+  ];
+  let animating = false;
+
+  function resetNodes() {
+    nodeApp.classList.remove('active', 'hit', 'miss');
+    nodeCache.classList.remove('active', 'hit', 'miss');
+    nodeDB.classList.remove('active', 'hit', 'miss');
+    edgeAppCache.setAttribute('stroke', 'rgba(255,255,255,0.08)');
+    edgeAppDB.setAttribute('stroke', 'rgba(255,255,255,0.08)');
+    edgeCacheDB.setAttribute('stroke', 'rgba(255,255,255,0.08)');
+    strategyLabel.setAttribute('fill', 'transparent');
+    flowSteps.forEach(s => { s.setAttribute('fill', 'transparent'); s.textContent = ''; });
+    document.getElementById('stat-consistency').textContent = '—';
+    document.getElementById('stat-write-speed').textContent = '—';
+    document.getElementById('stat-complexity').textContent = '—';
+    document.getElementById('stat-risk').textContent = '—';
+    document.getElementById('stat-consistency').className = 'stat-value';
+    document.getElementById('stat-write-speed').className = 'stat-value';
+    document.getElementById('stat-complexity').className = 'stat-value';
+    document.getElementById('stat-risk').className = 'stat-value';
+  }
+
+  function showStats(consistency, speed, complexity, risk) {
+    const sc = document.getElementById('stat-consistency');
+    const ss = document.getElementById('stat-write-speed');
+    const scx = document.getElementById('stat-complexity');
+    const sr = document.getElementById('stat-risk');
+    sc.textContent = consistency[0]; sc.className = 'stat-value ' + consistency[1];
+    ss.textContent = speed[0]; ss.className = 'stat-value ' + speed[1];
+    scx.textContent = complexity[0]; scx.className = 'stat-value ' + complexity[1];
+    sr.textContent = risk[0]; sr.className = 'stat-value ' + risk[1];
+  }
+
+  function animateWriteThrough() {
+    if (animating) return;
+    animating = true;
+    resetNodes();
+
+    strategyLabel.textContent = 'Write-Through';
+    strategyLabel.setAttribute('fill', '#58a6ff');
+
+    // Step 1: App writes to Cache
+    nodeApp.classList.add('active');
+    edgeAppCache.setAttribute('stroke', 'rgba(88, 166, 255, 0.5)');
+    flowSteps[0].textContent = '1. 寫入快取';
+    flowSteps[0].setAttribute('fill', '#58a6ff');
+
+    setTimeout(() => {
+      nodeCache.classList.add('hit');
+      // Step 2: Cache writes to DB (synchronous)
+      edgeCacheDB.setAttribute('stroke', 'rgba(88, 166, 255, 0.5)');
+      flowSteps[1].textContent = '2. 同步寫入 DB';
+      flowSteps[1].setAttribute('fill', '#58a6ff');
+    }, 700);
+
+    setTimeout(() => {
+      nodeDB.classList.add('hit');
+      flowSteps[2].textContent = '3. 兩邊一致 ✓';
+      flowSteps[2].setAttribute('fill', '#3fb950');
+      showStats(['強', 'green'], ['慢', 'red'], ['中', 'orange'], ['低', 'green']);
+    }, 1400);
+
+    setTimeout(() => { resetNodes(); animating = false; }, 3500);
+  }
+
+  function animateWriteBehind() {
+    if (animating) return;
+    animating = true;
+    resetNodes();
+
+    strategyLabel.textContent = 'Write-Behind';
+    strategyLabel.setAttribute('fill', '#d29922');
+
+    // Step 1: App writes to Cache (fast)
+    nodeApp.classList.add('active');
+    edgeAppCache.setAttribute('stroke', 'rgba(63, 185, 80, 0.5)');
+    flowSteps[0].textContent = '1. 寫入快取（立即完成）';
+    flowSteps[0].setAttribute('fill', '#3fb950');
+
+    setTimeout(() => {
+      nodeCache.classList.add('hit');
+      flowSteps[1].textContent = '2. 返回成功 ✓';
+      flowSteps[1].setAttribute('fill', '#3fb950');
+    }, 500);
+
+    // Step 2: Cache async writes to DB (later)
+    setTimeout(() => {
+      edgeCacheDB.setAttribute('stroke', 'rgba(210, 153, 34, 0.5)');
+      flowSteps[2].textContent = '3. 稍後非同步寫入 DB...';
+      flowSteps[2].setAttribute('fill', '#d29922');
+      nodeDB.classList.add('active');
+    }, 1500);
+
+    setTimeout(() => {
+      nodeDB.classList.remove('active');
+      nodeDB.classList.add('hit');
+      showStats(['最終一致', 'orange'], ['快', 'green'], ['高', 'red'], ['高', 'red']);
+    }, 2200);
+
+    setTimeout(() => { resetNodes(); animating = false; }, 3800);
+  }
+
+  function animateWriteAround() {
+    if (animating) return;
+    animating = true;
+    resetNodes();
+
+    strategyLabel.textContent = 'Write-Around';
+    strategyLabel.setAttribute('fill', '#bc8cff');
+
+    // Step 1: App writes directly to DB
+    nodeApp.classList.add('active');
+    edgeAppDB.setAttribute('stroke', 'rgba(188, 140, 255, 0.5)');
+    flowSteps[0].textContent = '1. 直接寫入 DB';
+    flowSteps[0].setAttribute('fill', '#bc8cff');
+
+    setTimeout(() => {
+      nodeDB.classList.add('hit');
+      flowSteps[1].textContent = '2. 跳過快取';
+      flowSteps[1].setAttribute('fill', '#bc8cff');
+    }, 700);
+
+    setTimeout(() => {
+      nodeCache.classList.add('miss');
+      flowSteps[2].textContent = '3. 快取可能過時 ⚠';
+      flowSteps[2].setAttribute('fill', '#d29922');
+      showStats(['弱', 'red'], ['中', 'orange'], ['低', 'green'], ['低', 'green']);
+    }, 1400);
+
+    setTimeout(() => { resetNodes(); animating = false; }, 3500);
+  }
+
+  document.getElementById('btn-wt').addEventListener('click', animateWriteThrough);
+  document.getElementById('btn-wb').addEventListener('click', animateWriteBehind);
+  document.getElementById('btn-wa').addEventListener('click', animateWriteAround);
+
+  // --- Cards ---
+  document.querySelectorAll('.system-card').forEach(card => {
+    card.addEventListener('click', () => {
+      if (card.classList.contains('clicked')) return;
+      card.classList.add('clicked');
+      card.querySelectorAll('.line').forEach((line, i) => {
+        setTimeout(() => line.classList.add('visible'), (i + 1) * 300);
+      });
+    });
+  });
+
+  // --- Question Logic ---
+  const q1 = document.getElementById('q1');
+  const q1Feedback = document.getElementById('q1-feedback');
+  const insightBox = document.querySelector('.k05-insight');
+  let q1Answered = false;
+
+  q1.querySelectorAll('.question-option').forEach(opt => {
+    opt.addEventListener('click', () => {
+      if (q1Answered) return;
+      const isCorrect = opt.getAttribute('data-answer') === 'correct';
+      if (isCorrect) {
+        q1Answered = true;
+        opt.classList.add('correct');
+        q1Feedback.textContent = '✓ 正確！寫入的核心挑戰在於保持兩個資料來源的一致性。';
+        q1Feedback.classList.add('visible', 'correct');
+        q1.querySelectorAll('.question-option').forEach(o => {
+          if (o !== opt) o.classList.add('disabled');
+        });
+        setTimeout(() => {
+          insightBox.classList.add('visible');
+        }, 600);
+      } else {
+        opt.classList.add('incorrect');
+        q1Feedback.textContent = '✗ 再想想——問題不在速度或記憶體，而在同步。';
+        q1Feedback.classList.add('visible', 'incorrect');
+        setTimeout(() => {
+          q1Feedback.classList.remove('visible');
+          setTimeout(() => q1Feedback.classList.remove('incorrect'), 300);
+        }, 2000);
+      }
+    });
+  });
+})();
+</script>
+</body>
+</html>

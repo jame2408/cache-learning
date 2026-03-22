@@ -1,0 +1,246 @@
+<!DOCTYPE html>
+<html lang="zh-TW">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Cache Koan 24 - Advanced Cache Patterns</title>
+  <link rel="stylesheet" href="../css/shared.css">
+  <script src="../js/i18n.js"></script>
+</head>
+<body>
+
+<div class="mobile-gate">
+  <div class="gate-icon">&#9776;</div>
+  <div class="gate-text" data-i18n="mobile-gate">此學習路徑需要更寬的視窗。請在較大的螢幕上開啟。</div>
+</div>
+
+<div class="koan-page">
+  <div class="koan-number" data-i18n="k24-number">Koan 24</div>
+  <h1 class="koan-title" data-i18n="k24-title">進階快取模式總覽</h1>
+  <p class="koan-zen" data-i18n="k24-zen">「學會了每一招，才能忘記招式，隨心而用。」</p>
+
+  <h2 class="koan-section-title" data-i18n="k24-section-explain">理解</h2>
+  <p class="koan-text" data-i18n="k24-explain">到目前為止，你已經學過多種快取模式：Cache-Aside、Write-Through、Write-Behind、Read-Through，以及各種淘汰策略。每種模式都有其最佳適用場景。真正的技藝在於——根據實際需求，選擇並組合正確的模式。</p>
+
+  <h2 class="koan-section-title" data-i18n="k24-section-interactive">決策流程圖</h2>
+  <p class="koan-text" data-i18n="k24-interactive-desc">回答以下問題，系統會為你推薦最適合的快取策略。</p>
+
+  <div class="koan-interactive" id="decision-tree">
+    <!-- Step 1: Read vs Write heavy -->
+    <div class="system-cards" id="step-1">
+      <div class="system-card" data-choice="read-heavy" id="choice-read">
+        <div class="card-title" data-i18n="k24-q-read">&#128218; 讀取為主</div>
+        <div class="card-output">
+          <div class="line" data-i18n="k24-q-read-desc">讀取請求遠多於寫入</div>
+        </div>
+      </div>
+      <div class="system-card" data-choice="write-heavy" id="choice-write">
+        <div class="card-title" data-i18n="k24-q-write">&#9997; 寫入為主</div>
+        <div class="card-output">
+          <div class="line" data-i18n="k24-q-write-desc">寫入請求頻繁或與讀取相當</div>
+        </div>
+      </div>
+    </div>
+
+    <!-- Step 2a: Consistency for read-heavy -->
+    <div class="system-cards hidden" id="step-2a">
+      <div class="system-card" data-choice="tolerant" id="choice-tolerant">
+        <div class="card-title" data-i18n="k24-q-tolerant">&#9203; 容許短暫過時</div>
+        <div class="card-output">
+          <div class="line" data-i18n="k24-q-tolerant-desc">資料可以有幾秒的延遲</div>
+        </div>
+      </div>
+      <div class="system-card" data-choice="strict" id="choice-strict">
+        <div class="card-title" data-i18n="k24-q-strict">&#128274; 嚴格一致性</div>
+        <div class="card-output">
+          <div class="line" data-i18n="k24-q-strict-desc">資料必須即時準確</div>
+        </div>
+      </div>
+    </div>
+
+    <!-- Step 2b: Consistency for write-heavy -->
+    <div class="system-cards hidden" id="step-2b">
+      <div class="system-card" data-choice="sync-write" id="choice-sync">
+        <div class="card-title" data-i18n="k24-q-sync">&#128204; 同步寫入</div>
+        <div class="card-output">
+          <div class="line" data-i18n="k24-q-sync-desc">每次寫入都必須持久化</div>
+        </div>
+      </div>
+      <div class="system-card" data-choice="async-write" id="choice-async">
+        <div class="card-title" data-i18n="k24-q-async">&#9889; 非同步寫入</div>
+        <div class="card-output">
+          <div class="line" data-i18n="k24-q-async-desc">可以接受短暫的寫入延遲</div>
+        </div>
+      </div>
+    </div>
+
+    <!-- Result panels -->
+    <div class="koan-interactive hidden" id="result-cache-aside" style="margin-top:1.5rem;border-color:var(--accent-green)">
+      <div class="card-title text-green" data-i18n="k24-result-aside-title">推薦：Cache-Aside + TTL</div>
+      <p class="koan-text" data-i18n="k24-result-aside-desc">最適合讀取為主、可容許短暫過時的場景。應用自行管理快取：先查快取，未命中再查資料庫並填充。搭配 TTL 自動過期和 LRU 淘汰策略。</p>
+      <div class="code-block">
+        <span class="keyword">def</span> <span class="function">get</span>(key):<br>
+        &nbsp;&nbsp;val = <span class="function">cache.get</span>(key)<br>
+        &nbsp;&nbsp;<span class="keyword">if</span> val <span class="keyword">is</span> None:<br>
+        &nbsp;&nbsp;&nbsp;&nbsp;val = <span class="function">db.query</span>(key)<br>
+        &nbsp;&nbsp;&nbsp;&nbsp;<span class="function">cache.set</span>(key, val, ttl=<span class="number">60</span>)<br>
+        &nbsp;&nbsp;<span class="keyword">return</span> val
+      </div>
+    </div>
+
+    <div class="koan-interactive hidden" id="result-read-through" style="margin-top:1.5rem;border-color:var(--accent-blue)">
+      <div class="card-title text-blue" data-i18n="k24-result-rt-title">推薦：Read-Through + Write-Through</div>
+      <p class="koan-text" data-i18n="k24-result-rt-desc">適合需要嚴格一致性的讀取場景。快取層自動從資料庫載入數據，寫入時同步更新快取和資料庫，確保快取始終是最新的。</p>
+    </div>
+
+    <div class="koan-interactive hidden" id="result-write-through" style="margin-top:1.5rem;border-color:var(--accent-orange)">
+      <div class="card-title text-orange" data-i18n="k24-result-wt-title">推薦：Write-Through</div>
+      <p class="koan-text" data-i18n="k24-result-wt-desc">適合寫入頻繁且需要持久化保證的場景。每次寫入同時更新快取和資料庫，保證資料不會丟失。延遲較高但一致性最強。</p>
+    </div>
+
+    <div class="koan-interactive hidden" id="result-write-behind" style="margin-top:1.5rem;border-color:var(--accent-purple)">
+      <div class="card-title text-purple" data-i18n="k24-result-wb-title">推薦：Write-Behind (Write-Back)</div>
+      <p class="koan-text" data-i18n="k24-result-wb-desc">適合寫入頻繁但可接受短暫延遲的場景。寫入先到快取，非同步批量寫回資料庫。吞吐量最高，但有資料丟失風險。</p>
+    </div>
+
+    <div style="margin-top:1rem">
+      <button class="action-btn" id="btn-restart-tree" data-i18n="k24-btn-restart">重新選擇</button>
+    </div>
+  </div>
+
+  <h2 class="koan-section-title" data-i18n="k24-section-question">思考</h2>
+  <div class="question-group visible" id="q1">
+    <div class="question-label" data-i18n="k24-q1">對於一個讀取為主、可容許短暫過時的應用，哪種模式最佳？</div>
+    <div class="question-options">
+      <div class="question-option" data-answer="correct" data-i18n="k24-q1-a">Cache-Aside + TTL</div>
+      <div class="question-option" data-answer="wrong" data-i18n="k24-q1-b">Write-Through</div>
+      <div class="question-option" data-answer="wrong" data-i18n="k24-q1-c">不使用快取</div>
+    </div>
+    <div class="question-feedback" id="q1-feedback"></div>
+  </div>
+
+  <div class="k24-insight">
+    <div class="insight-box">
+      <div class="insight-label" data-i18n="k24-insight-label">洞察</div>
+      <div class="insight-text" data-i18n-html="k24-insight-text">大多數生產系統會組合多種模式。例如：<code>Cache-Aside</code> + <code>TTL</code> + <code>LRU 淘汰</code> + 分散式快取搭配本地 L1 快取。沒有萬能的快取策略——理解每種模式的取捨，才能設計出最適合你系統的方案。</div>
+    </div>
+  </div>
+</div>
+
+<script src="../js/progress.js"></script>
+<script src="../js/scroll.js"></script>
+<script>
+(function () {
+  'use strict';
+
+  const step1 = document.getElementById('step-1');
+  const step2a = document.getElementById('step-2a');
+  const step2b = document.getElementById('step-2b');
+  const results = {
+    'cache-aside': document.getElementById('result-cache-aside'),
+    'read-through': document.getElementById('result-read-through'),
+    'write-through': document.getElementById('result-write-through'),
+    'write-behind': document.getElementById('result-write-behind')
+  };
+
+  function hideAll() {
+    [step2a, step2b].forEach(el => el.classList.add('hidden'));
+    Object.values(results).forEach(el => el.classList.add('hidden'));
+    document.querySelectorAll('#decision-tree .system-card').forEach(c => c.classList.remove('clicked'));
+  }
+
+  function resetTree() {
+    hideAll();
+    step1.classList.remove('hidden');
+    step1.querySelectorAll('.system-card').forEach(c => c.classList.remove('clicked'));
+  }
+
+  // Step 1 choices
+  document.getElementById('choice-read').addEventListener('click', function() {
+    if (this.classList.contains('clicked')) return;
+    step1.querySelectorAll('.system-card').forEach(c => c.classList.add('clicked'));
+    this.style.borderColor = 'var(--accent-green)';
+    step2a.classList.remove('hidden');
+    step2a.style.animation = 'fade-in-up 0.4s var(--ease-out) forwards';
+  });
+
+  document.getElementById('choice-write').addEventListener('click', function() {
+    if (this.classList.contains('clicked')) return;
+    step1.querySelectorAll('.system-card').forEach(c => c.classList.add('clicked'));
+    this.style.borderColor = 'var(--accent-green)';
+    step2b.classList.remove('hidden');
+    step2b.style.animation = 'fade-in-up 0.4s var(--ease-out) forwards';
+  });
+
+  // Step 2a choices (read-heavy)
+  document.getElementById('choice-tolerant').addEventListener('click', function() {
+    if (this.classList.contains('clicked')) return;
+    step2a.querySelectorAll('.system-card').forEach(c => c.classList.add('clicked'));
+    this.style.borderColor = 'var(--accent-green)';
+    showResult('cache-aside');
+  });
+
+  document.getElementById('choice-strict').addEventListener('click', function() {
+    if (this.classList.contains('clicked')) return;
+    step2a.querySelectorAll('.system-card').forEach(c => c.classList.add('clicked'));
+    this.style.borderColor = 'var(--accent-green)';
+    showResult('read-through');
+  });
+
+  // Step 2b choices (write-heavy)
+  document.getElementById('choice-sync').addEventListener('click', function() {
+    if (this.classList.contains('clicked')) return;
+    step2b.querySelectorAll('.system-card').forEach(c => c.classList.add('clicked'));
+    this.style.borderColor = 'var(--accent-green)';
+    showResult('write-through');
+  });
+
+  document.getElementById('choice-async').addEventListener('click', function() {
+    if (this.classList.contains('clicked')) return;
+    step2b.querySelectorAll('.system-card').forEach(c => c.classList.add('clicked'));
+    this.style.borderColor = 'var(--accent-green)';
+    showResult('write-behind');
+  });
+
+  function showResult(key) {
+    const el = results[key];
+    el.classList.remove('hidden');
+    el.style.animation = 'fade-in-up 0.5s var(--ease-out) forwards';
+  }
+
+  document.getElementById('btn-restart-tree').addEventListener('click', resetTree);
+
+  // --- Question ---
+  let q1Answered = false;
+  document.querySelectorAll('#q1 .question-option').forEach(opt => {
+    opt.addEventListener('click', () => {
+      if (q1Answered) return;
+      const isCorrect = opt.getAttribute('data-answer') === 'correct';
+      if (isCorrect) {
+        q1Answered = true;
+        opt.classList.add('correct');
+        const fb = document.getElementById('q1-feedback');
+        fb.textContent = '\u2713 \u6B63\u78BA\uFF01Cache-Aside + TTL \u662F\u8B80\u53D6\u70BA\u4E3B\u5834\u666F\u7684\u7D93\u5178\u6A21\u5F0F\u3002';
+        fb.classList.add('visible', 'correct');
+        document.querySelectorAll('#q1 .question-option').forEach(o => {
+          if (o !== opt) o.classList.add('disabled');
+        });
+        setTimeout(() => {
+          document.querySelector('.k24-insight').classList.add('visible');
+        }, 600);
+      } else {
+        opt.classList.add('incorrect');
+        const fb = document.getElementById('q1-feedback');
+        fb.textContent = '\u2717 \u60F3\u60F3\u770B\u2014\u2014\u8B80\u53D6\u70BA\u4E3B\u4E14\u5BB9\u8A31\u904E\u6642\uFF0C\u54EA\u7A2E\u6A21\u5F0F\u6700\u7C21\u55AE\u6709\u6548\uFF1F';
+        fb.classList.add('visible', 'incorrect');
+        setTimeout(() => {
+          fb.classList.remove('visible');
+          setTimeout(() => fb.classList.remove('incorrect'), 300);
+        }, 2000);
+      }
+    });
+  });
+})();
+</script>
+</body>
+</html>

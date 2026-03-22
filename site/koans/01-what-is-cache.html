@@ -1,0 +1,218 @@
+<!DOCTYPE html>
+<html lang="zh-TW">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Cache Koans — 什麼是快取？</title>
+  <link rel="stylesheet" href="../css/shared.css">
+  <script src="../js/i18n.js"></script>
+</head>
+<body>
+
+<!-- Mobile Gate -->
+<div class="mobile-gate">
+  <div class="gate-icon">&#9776;</div>
+  <div class="gate-text" data-i18n="mobile-gate">
+    此學習路徑需要更寬的視窗。請在較大的螢幕上開啟。
+  </div>
+</div>
+
+<div class="koan-page">
+  <div class="koan-number" data-i18n="k01-number">Koan 01</div>
+  <h1 class="koan-title" data-i18n="k01-title">什麼是快取？</h1>
+  <p class="koan-zen" data-i18n="k01-zen">弟子問師父：「系統太慢了，該怎麼辦？」師父說：「你已經知道答案了——你只是每次都忘記。」</p>
+
+  <div class="koan-section-title" data-i18n="k01-section-concept">概念</div>
+  <p class="koan-text" data-i18n="k01-text1">快取是一種臨時儲存空間，用來存放經常被存取的資料。它的目的是避免重複從較慢的來源（如資料庫或遠端伺服器）取得相同的資料，從而大幅降低回應時間。</p>
+  <p class="koan-text" data-i18n="k01-text2">想像你每天都要查同一個電話號碼。你可以每次都翻電話簿（慢），也可以記住它（快）。快取就是系統的「記憶」。</p>
+
+  <div class="koan-section-title" data-i18n="k01-section-diagram">互動圖解</div>
+  <p class="koan-text" data-i18n="k01-text-diagram">點擊「發送請求」按鈕，觀察請求走快取路徑（快）與資料庫路徑（慢）的差異。</p>
+
+  <div class="koan-interactive">
+    <div class="diagram-container" id="cache-diagram">
+      <svg viewBox="0 0 700 220" xmlns="http://www.w3.org/2000/svg">
+        <!-- Edges -->
+        <path d="M 140 110 L 280 60" stroke="rgba(255,255,255,0.08)" stroke-width="1.5" fill="none" id="path-to-cache"/>
+        <path d="M 140 110 L 280 170" stroke="rgba(255,255,255,0.08)" stroke-width="1.5" fill="none" id="path-to-db"/>
+        <path d="M 360 60 L 500 60" stroke="rgba(255,255,255,0.08)" stroke-width="1.5" fill="none" stroke-dasharray="4,4"/>
+        <path d="M 360 170 L 500 170" stroke="rgba(255,255,255,0.08)" stroke-width="1.5" fill="none" stroke-dasharray="4,4"/>
+
+        <!-- Client Node -->
+        <g class="svg-node" id="node-client" transform="translate(60, 80)">
+          <rect width="80" height="60" fill="rgba(22,27,34,0.8)" stroke="rgba(255,255,255,0.08)" stroke-width="1.5" rx="8"/>
+          <text x="40" y="25" text-anchor="middle" font-family="var(--font-mono)" font-size="11" fill="#6a7280" data-i18n="k01-diag-client">用戶端</text>
+          <text x="40" y="45" text-anchor="middle" font-size="18">&#128187;</text>
+        </g>
+
+        <!-- Cache Node -->
+        <g class="svg-node" id="node-cache" transform="translate(280, 30)">
+          <rect width="80" height="60" fill="rgba(22,27,34,0.8)" stroke="rgba(255,255,255,0.08)" stroke-width="1.5" rx="8"/>
+          <text x="40" y="25" text-anchor="middle" font-family="var(--font-mono)" font-size="11" fill="#6a7280" data-i18n="k01-diag-cache">快取</text>
+          <text x="40" y="45" text-anchor="middle" font-size="18">&#9889;</text>
+        </g>
+
+        <!-- DB Node -->
+        <g class="svg-node" id="node-db" transform="translate(280, 140)">
+          <rect width="80" height="60" fill="rgba(22,27,34,0.8)" stroke="rgba(255,255,255,0.08)" stroke-width="1.5" rx="8"/>
+          <text x="40" y="25" text-anchor="middle" font-family="var(--font-mono)" font-size="11" fill="#6a7280" data-i18n="k01-diag-db">資料庫</text>
+          <text x="40" y="45" text-anchor="middle" font-size="18">&#128451;</text>
+        </g>
+
+        <!-- Response Time Labels -->
+        <text id="cache-time" x="500" y="65" font-family="var(--font-mono)" font-size="12" fill="transparent">~2ms</text>
+        <text id="db-time" x="500" y="175" font-family="var(--font-mono)" font-size="12" fill="transparent">~200ms</text>
+
+        <!-- Animated particles -->
+        <circle class="request-particle" id="particle-cache" r="4" cx="140" cy="110"/>
+        <circle class="request-particle" id="particle-db" r="4" cx="140" cy="110"/>
+      </svg>
+    </div>
+
+    <div style="display:flex; gap:1rem; align-items:center; flex-wrap:wrap;">
+      <button class="action-btn" id="btn-send-hit" data-i18n="k01-btn-hit">發送請求（命中快取）</button>
+      <button class="action-btn" id="btn-send-miss" data-i18n="k01-btn-miss">發送請求（快取未命中）</button>
+    </div>
+
+    <div class="stats-row" style="margin-top:1.5rem;">
+      <div class="stat-item">
+        <div class="stat-value green" id="stat-cache-time">—</div>
+        <div class="stat-label" data-i18n="k01-stat-cache">快取回應時間</div>
+      </div>
+      <div class="stat-item">
+        <div class="stat-value red" id="stat-db-time">—</div>
+        <div class="stat-label" data-i18n="k01-stat-db">資料庫回應時間</div>
+      </div>
+      <div class="stat-item">
+        <div class="stat-value orange" id="stat-speedup">—</div>
+        <div class="stat-label" data-i18n="k01-stat-speedup">加速倍率</div>
+      </div>
+    </div>
+  </div>
+
+  <div class="koan-section-title" data-i18n="k01-section-question">思考</div>
+  <div class="question-group visible" id="q1">
+    <div class="question-label" data-i18n="k01-q1">快取的主要目的是什麼？</div>
+    <div class="question-options">
+      <div class="question-option" data-answer="correct" data-i18n="k01-q1-a1">降低延遲，加速資料存取</div>
+      <div class="question-option" data-answer="incorrect" data-i18n="k01-q1-a2">永久儲存資料</div>
+      <div class="question-option" data-answer="incorrect" data-i18n="k01-q1-a3">取代資料庫</div>
+    </div>
+    <div class="question-feedback" id="q1-feedback"></div>
+  </div>
+
+  <div class="k01-insight">
+    <div class="insight-box" id="insight-box">
+      <div class="insight-label" data-i18n="k01-insight-label">洞察</div>
+      <div class="insight-text" data-i18n-html="k01-insight-text">
+        想想你的大腦：你記住常用的電話號碼，就不需要每次都查電話簿。<br><br>
+        快取的運作方式完全一樣——把經常需要的資料放在離使用者更近、更快的地方。這就是為什麼瀏覽器有快取、CPU 有 L1/L2/L3 快取、CDN 把內容放在離你最近的伺服器上。<br><br>
+        <code>速度 = 距離 / 時間</code>。快取縮短了距離。
+      </div>
+    </div>
+  </div>
+</div>
+
+<script src="../js/progress.js"></script>
+<script src="../js/scroll.js"></script>
+<script>
+(function () {
+  'use strict';
+
+  // --- Diagram Animation ---
+  const nodeCache = document.getElementById('node-cache');
+  const nodeDB = document.getElementById('node-db');
+  const nodeClient = document.getElementById('node-client');
+  const cacheTimeLabel = document.getElementById('cache-time');
+  const dbTimeLabel = document.getElementById('db-time');
+
+  function resetNodes() {
+    nodeCache.classList.remove('active', 'hit', 'miss');
+    nodeDB.classList.remove('active', 'hit', 'miss');
+    nodeClient.classList.remove('active');
+    cacheTimeLabel.setAttribute('fill', 'transparent');
+    dbTimeLabel.setAttribute('fill', 'transparent');
+  }
+
+  function animateHit() {
+    resetNodes();
+    nodeClient.classList.add('active');
+    const cacheTime = Math.floor(Math.random() * 5) + 1;
+    setTimeout(() => {
+      nodeCache.classList.add('hit');
+      cacheTimeLabel.setAttribute('fill', '#3fb950');
+      cacheTimeLabel.textContent = `~${cacheTime}ms`;
+      document.getElementById('stat-cache-time').textContent = `${cacheTime}ms`;
+      updateSpeedup();
+    }, 400);
+    setTimeout(() => resetNodes(), 2000);
+  }
+
+  function animateMiss() {
+    resetNodes();
+    nodeClient.classList.add('active');
+    const dbTime = Math.floor(Math.random() * 150) + 100;
+    setTimeout(() => {
+      nodeCache.classList.add('miss');
+    }, 400);
+    setTimeout(() => {
+      nodeDB.classList.add('active');
+      dbTimeLabel.setAttribute('fill', '#f85149');
+      dbTimeLabel.textContent = `~${dbTime}ms`;
+      document.getElementById('stat-db-time').textContent = `${dbTime}ms`;
+      updateSpeedup();
+    }, 800);
+    setTimeout(() => resetNodes(), 2500);
+  }
+
+  function updateSpeedup() {
+    const ct = document.getElementById('stat-cache-time').textContent;
+    const dt = document.getElementById('stat-db-time').textContent;
+    if (ct !== '—' && dt !== '—') {
+      const c = parseInt(ct);
+      const d = parseInt(dt);
+      if (c > 0) {
+        document.getElementById('stat-speedup').textContent = `${Math.round(d / c)}x`;
+      }
+    }
+  }
+
+  document.getElementById('btn-send-hit').addEventListener('click', animateHit);
+  document.getElementById('btn-send-miss').addEventListener('click', animateMiss);
+
+  // --- Question Logic ---
+  const q1 = document.getElementById('q1');
+  const q1Feedback = document.getElementById('q1-feedback');
+  const insightBox = document.querySelector('.k01-insight');
+  let q1Answered = false;
+
+  q1.querySelectorAll('.question-option').forEach(opt => {
+    opt.addEventListener('click', () => {
+      if (q1Answered) return;
+      const isCorrect = opt.getAttribute('data-answer') === 'correct';
+      if (isCorrect) {
+        q1Answered = true;
+        opt.classList.add('correct');
+        q1Feedback.textContent = '✓ 正確！快取的核心目的是降低存取延遲。';
+        q1Feedback.classList.add('visible', 'correct');
+        q1.querySelectorAll('.question-option').forEach(o => {
+          if (o !== opt) o.classList.add('disabled');
+        });
+        setTimeout(() => {
+          insightBox.classList.add('visible');
+        }, 600);
+      } else {
+        opt.classList.add('incorrect');
+        q1Feedback.textContent = '✗ 再想想——快取是「臨時」的儲存。';
+        q1Feedback.classList.add('visible', 'incorrect');
+        setTimeout(() => {
+          q1Feedback.classList.remove('visible');
+          setTimeout(() => q1Feedback.classList.remove('incorrect'), 300);
+        }, 2000);
+      }
+    });
+  });
+})();
+</script>
+</body>
+</html>

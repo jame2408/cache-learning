@@ -1,0 +1,210 @@
+<!DOCTYPE html>
+<html lang="zh-TW">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Cache Koans — 透過實踐學習快取</title>
+  <meta name="description" content="Learn caching through progressive, hands-on exercises. 透過漸進式互動練習學習快取。">
+  <meta property="og:title" content="Cache Koans">
+  <meta property="og:description" content="Learn caching through practice.">
+  <link rel="stylesheet" href="css/shared.css">
+  <script src="js/i18n.js"></script>
+  <style>
+    /* --- Opening page specific styles --- */
+    .arch-node {
+      transition: all 0.6s ease;
+    }
+    .arch-node text {
+      font-family: var(--font-mono);
+      font-size: 11px;
+      fill: var(--text-dim);
+      transition: fill 0.4s ease;
+    }
+    .arch-node rect {
+      fill: rgba(22, 27, 34, 0.8);
+      stroke: rgba(255, 255, 255, 0.08);
+      stroke-width: 1.5;
+      rx: 8;
+      transition: all 0.4s ease;
+    }
+    .arch-edge {
+      stroke: rgba(255, 255, 255, 0.06);
+      stroke-width: 1.5;
+      fill: none;
+      transition: stroke 0.4s ease;
+    }
+    .illuminated .arch-node rect {
+      stroke: rgba(88, 166, 255, 0.4);
+      filter: drop-shadow(0 0 6px rgba(88, 166, 255, 0.2));
+    }
+    .illuminated .arch-node text {
+      fill: var(--text-primary);
+    }
+    .illuminated .arch-edge {
+      stroke: rgba(88, 166, 255, 0.25);
+    }
+    .illuminated .arch-node.cache-node rect {
+      stroke: rgba(63, 185, 80, 0.5);
+      filter: drop-shadow(0 0 10px rgba(63, 185, 80, 0.3));
+    }
+    .illuminated .arch-node.cache-node text {
+      fill: var(--accent-green);
+    }
+
+    /* Particle animation */
+    @keyframes flow-particle {
+      0% { opacity: 0; }
+      10% { opacity: 1; }
+      90% { opacity: 1; }
+      100% { opacity: 0; }
+    }
+    .flow-dot {
+      fill: var(--accent-blue);
+      opacity: 0;
+    }
+    .illuminated .flow-dot {
+      animation: flow-particle 2s ease-in-out infinite;
+    }
+    .illuminated .flow-dot:nth-child(2) { animation-delay: 0.3s; }
+    .illuminated .flow-dot:nth-child(3) { animation-delay: 0.6s; }
+    .illuminated .flow-dot:nth-child(4) { animation-delay: 0.9s; }
+    .illuminated .flow-dot:nth-child(5) { animation-delay: 1.2s; }
+    .illuminated .flow-dot.cache-flow {
+      fill: var(--accent-green);
+    }
+
+    .sequence-highlight {
+      opacity: 0;
+      transition: opacity 0.5s ease;
+    }
+    .illuminated .sequence-highlight {
+      opacity: 1;
+    }
+  </style>
+</head>
+<body>
+
+<!-- Mobile Gate -->
+<div class="mobile-gate">
+  <div class="gate-icon">&#9776;</div>
+  <div class="gate-text" data-i18n="mobile-gate">
+    此學習路徑需要更寬的視窗。請在較大的螢幕上開啟。
+  </div>
+</div>
+
+<!-- Opening Page -->
+<div class="opening-page">
+  <h1 class="opening-title" data-i18n="site-title">Cache Koans</h1>
+  <p class="opening-subtitle" data-i18n="site-subtitle">透過實踐學習快取</p>
+
+  <div class="opening-koan" data-i18n-html="opening-koan">
+    一位工程師建了一個完美的系統。<br>
+    它跑了一千零一天，從不出錯。<br><br>
+    第一千零二天，一筆資料改了。<br>
+    快取不知道。使用者不知道。<br>
+    只有資料庫知道真相——但沒有人去問它。<br><br>
+    系統依然回應如常，<br>
+    只是，每一個回應都是錯的。
+  </div>
+
+  <!-- SVG System Diagram -->
+  <div class="opening-diagram" id="system-diagram">
+    <svg viewBox="0 0 700 320" xmlns="http://www.w3.org/2000/svg">
+      <!-- Edges -->
+      <path class="arch-edge" d="M 130 160 L 230 160" id="edge-client-lb"/>
+      <path class="arch-edge" d="M 310 160 L 390 160" id="edge-lb-app"/>
+      <path class="arch-edge" d="M 470 160 L 560 110" id="edge-app-cache"/>
+      <path class="arch-edge" d="M 470 160 L 560 210" id="edge-app-db"/>
+      <path class="arch-edge" d="M 560 130 L 560 190" id="edge-cache-db" stroke-dasharray="4,4"/>
+
+      <!-- Flow Particles -->
+      <circle class="flow-dot" r="3">
+        <animateMotion dur="2s" repeatCount="indefinite" path="M 130 160 L 230 160"/>
+      </circle>
+      <circle class="flow-dot" r="3">
+        <animateMotion dur="2s" repeatCount="indefinite" path="M 310 160 L 390 160"/>
+      </circle>
+      <circle class="flow-dot cache-flow" r="3">
+        <animateMotion dur="1.8s" repeatCount="indefinite" path="M 470 160 L 560 110"/>
+      </circle>
+      <circle class="flow-dot" r="3">
+        <animateMotion dur="2.2s" repeatCount="indefinite" path="M 470 160 L 560 210"/>
+      </circle>
+      <circle class="flow-dot" r="3" style="fill: var(--accent-orange);">
+        <animateMotion dur="2.5s" repeatCount="indefinite" path="M 560 130 L 560 190"/>
+      </circle>
+
+      <!-- Nodes -->
+      <g class="arch-node" transform="translate(60, 130)">
+        <rect width="70" height="60"/>
+        <text x="35" y="25" text-anchor="middle" data-i18n="diag-client">Client</text>
+        <text x="35" y="42" text-anchor="middle" style="font-size:18px;">&#128187;</text>
+      </g>
+      <g class="arch-node" transform="translate(230, 130)">
+        <rect width="80" height="60"/>
+        <text x="40" y="25" text-anchor="middle" data-i18n="diag-lb">Load Balancer</text>
+        <text x="40" y="42" text-anchor="middle" style="font-size:18px;">&#9878;</text>
+      </g>
+      <g class="arch-node" transform="translate(390, 130)">
+        <rect width="80" height="60"/>
+        <text x="40" y="25" text-anchor="middle" data-i18n="diag-app">App Server</text>
+        <text x="40" y="42" text-anchor="middle" style="font-size:18px;">&#9881;</text>
+      </g>
+      <g class="arch-node cache-node" transform="translate(530, 80)">
+        <rect width="80" height="60"/>
+        <text x="40" y="25" text-anchor="middle" data-i18n="diag-cache">Cache</text>
+        <text x="40" y="42" text-anchor="middle" style="font-size:18px;">&#9889;</text>
+      </g>
+      <g class="arch-node" transform="translate(530, 180)">
+        <rect width="80" height="60"/>
+        <text x="40" y="25" text-anchor="middle" data-i18n="diag-db">Database</text>
+        <text x="40" y="42" text-anchor="middle" style="font-size:18px;">&#128451;</text>
+      </g>
+
+      <!-- Miss/Stale indicator (hidden by default) -->
+      <g class="sequence-highlight" transform="translate(540, 68)">
+        <text fill="#f85149" font-family="var(--font-mono)" font-size="10" font-weight="600" data-i18n="diag-stale">STALE!</text>
+      </g>
+    </svg>
+  </div>
+
+  <button class="observe-btn" id="observe-btn" data-i18n="observe-btn">觀察</button>
+
+  <p class="opening-reveal" id="reveal-text" data-i18n-html="opening-reveal">
+    快取讓系統飛速運轉——直到它不再正確。<br>
+    快取失效是電腦科學最難的問題之一。<br>
+    現在，來學習為什麼。
+  </p>
+
+  <a href="koans/01-what-is-cache.html" class="begin-link" id="begin-link" data-i18n="begin">開始</a>
+</div>
+
+<script src="js/progress.js"></script>
+<script src="js/scroll.js"></script>
+<script>
+(function () {
+  const btn = document.getElementById('observe-btn');
+  const diagram = document.getElementById('system-diagram');
+  const reveal = document.getElementById('reveal-text');
+  const beginLink = document.getElementById('begin-link');
+  let illuminated = false;
+
+  btn.addEventListener('click', function () {
+    if (illuminated) return;
+    illuminated = true;
+    diagram.querySelector('svg').classList.add('illuminated');
+    btn.style.opacity = '0.4';
+    btn.style.pointerEvents = 'none';
+
+    setTimeout(() => {
+      reveal.classList.add('visible');
+    }, 1200);
+
+    setTimeout(() => {
+      beginLink.classList.add('visible');
+    }, 2200);
+  });
+})();
+</script>
+</body>
+</html>

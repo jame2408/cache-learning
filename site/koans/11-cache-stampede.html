@@ -1,0 +1,287 @@
+<!DOCTYPE html>
+<html lang="zh-TW">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Cache Koans — 快取驚群效應</title>
+  <link rel="stylesheet" href="../css/shared.css">
+  <script src="../js/i18n.js"></script>
+</head>
+<body>
+
+<!-- Mobile Gate -->
+<div class="mobile-gate">
+  <div class="gate-icon">&#9776;</div>
+  <div class="gate-text" data-i18n="mobile-gate">
+    此學習路徑需要更寬的視窗。請在較大的螢幕上開啟。
+  </div>
+</div>
+
+<div class="koan-page">
+  <div class="koan-number" data-i18n="k11-number">Koan 11</div>
+  <h1 class="koan-title" data-i18n="k11-title">快取驚群效應</h1>
+  <p class="koan-zen" data-i18n="k11-zen">一把鎖過期了，一千個請求同時衝向資料庫。沒有人到得了。</p>
+
+  <div class="koan-section-title" data-i18n="k11-section-explain">理解</div>
+  <p class="koan-text" data-i18n="k11-explain">當一個熱門的快取鍵過期時，大量並發請求同時發現快取未命中，全部衝向資料庫重建快取。這股瞬間的流量洪峰可能壓垮資料庫，導致整個系統崩潰。這就是「驚群效應」——英文稱為 Cache Stampede 或 Thundering Herd。</p>
+
+  <div class="koan-section-title" data-i18n="k11-section-sim">模擬</div>
+  <p class="koan-text" data-i18n="k11-sim-desc">觀察快取過期時會發生什麼事。先點擊「模擬驚群」看問題，再點擊「使用 Mutex 鎖解決」看解法。</p>
+
+  <div class="koan-interactive">
+    <div class="diagram-container">
+      <svg viewBox="0 0 700 320" id="stampede-svg">
+        <!-- Requests label -->
+        <text x="80" y="20" fill="#a5a5a5" font-size="12" text-anchor="middle" data-i18n="k11-svg-requests">請求</text>
+        <!-- Request circles will be generated -->
+        <g id="request-pool"></g>
+        <!-- Cache -->
+        <g class="svg-node" id="cache-node">
+          <rect x="280" y="60" width="140" height="50" rx="8" fill="#111820" stroke="#6a7280" stroke-width="2"/>
+          <text x="350" y="90" fill="#e0e0e0" font-size="13" text-anchor="middle" data-i18n="k11-svg-cache">快取</text>
+        </g>
+        <!-- TTL indicator -->
+        <text x="350" y="130" fill="#d29922" font-size="11" text-anchor="middle" id="ttl-text">TTL: 5s</text>
+        <!-- Database -->
+        <g class="svg-node" id="db-node">
+          <rect x="280" y="200" width="140" height="50" rx="8" fill="#111820" stroke="#6a7280" stroke-width="2"/>
+          <text x="350" y="230" fill="#e0e0e0" font-size="13" text-anchor="middle" data-i18n="k11-svg-db">資料庫</text>
+        </g>
+        <!-- Lock icon (hidden initially) -->
+        <g id="lock-icon" style="display:none">
+          <rect x="310" y="148" width="80" height="40" rx="6" fill="rgba(63,185,80,0.15)" stroke="#3fb950" stroke-width="1.5"/>
+          <text x="350" y="173" fill="#3fb950" font-size="11" text-anchor="middle" data-i18n="k11-svg-mutex">Mutex 鎖</text>
+        </g>
+      </svg>
+    </div>
+
+    <div class="stats-row" id="sim-stats">
+      <div class="stat-item">
+        <div class="stat-value blue" id="stat-requests">0</div>
+        <div class="stat-label" data-i18n="k11-stat-requests">並發請求</div>
+      </div>
+      <div class="stat-item">
+        <div class="stat-value orange" id="stat-cache">HIT</div>
+        <div class="stat-label" data-i18n="k11-stat-cache">快取狀態</div>
+      </div>
+      <div class="stat-item">
+        <div class="stat-value red" id="stat-db-load">0%</div>
+        <div class="stat-label" data-i18n="k11-stat-db">資料庫負載</div>
+      </div>
+    </div>
+
+    <div style="margin-bottom:0.5rem">
+      <span style="font-size:0.8rem;color:var(--text-dim)" data-i18n="k11-db-load-label">資料庫負載</span>
+    </div>
+    <div class="load-meter">
+      <div class="load-meter-fill" id="db-load-bar" style="width:10%"></div>
+    </div>
+
+    <div style="margin-top:1.5rem;display:flex;gap:1rem;flex-wrap:wrap">
+      <button class="action-btn" id="btn-stampede" data-i18n="k11-btn-stampede">模擬驚群</button>
+      <button class="action-btn" id="btn-mutex" data-i18n="k11-btn-mutex">使用 Mutex 鎖解決</button>
+      <button class="action-btn" id="btn-reset" data-i18n="k11-btn-reset">重設</button>
+    </div>
+  </div>
+
+  <div class="koan-section-title" data-i18n="k11-section-question">思考</div>
+
+  <div class="question-group visible" id="q1">
+    <div class="question-label" data-i18n="k11-q1">如何防止快取驚群效應？</div>
+    <div class="question-options">
+      <div class="question-option" data-answer="correct" data-i18n="k11-q1-a">在快取重建時使用 Mutex 鎖</div>
+      <div class="question-option" data-answer="wrong" data-i18n="k11-q1-b">增加更多記憶體</div>
+      <div class="question-option" data-answer="wrong" data-i18n="k11-q1-c">加入更多快取伺服器</div>
+    </div>
+    <div class="question-feedback" id="q1-feedback"></div>
+  </div>
+
+  <div class="k11-insight">
+    <div class="insight-box">
+      <div class="insight-label" data-i18n="k11-insight-label">洞察</div>
+      <div class="insight-text" data-i18n-html="k11-insight-text">除了 Mutex 鎖之外，還有其他解法：<code>機率性提前刷新</code>（在 TTL 到期前隨機觸發重建）、<code>stale-while-revalidate</code>（先回傳舊值，背景更新），以及「永不過期 + 背景刷新」模式。每種方法都有取捨，但核心原則是：不要讓所有人同時去重建快取。</div>
+    </div>
+  </div>
+</div>
+
+<script src="../js/progress.js"></script>
+<script src="../js/scroll.js"></script>
+<script>
+(function() {
+  'use strict';
+  const svg = document.getElementById('stampede-svg');
+  const cacheNode = document.getElementById('cache-node');
+  const dbNode = document.getElementById('db-node');
+  const ttlText = document.getElementById('ttl-text');
+  const loadBar = document.getElementById('db-load-bar');
+  const statRequests = document.getElementById('stat-requests');
+  const statCache = document.getElementById('stat-cache');
+  const statDbLoad = document.getElementById('stat-db-load');
+  const lockIcon = document.getElementById('lock-icon');
+
+  const btnStampede = document.getElementById('btn-stampede');
+  const btnMutex = document.getElementById('btn-mutex');
+  const btnReset = document.getElementById('btn-reset');
+
+  let particles = [];
+  let animTimer = null;
+
+  function setDbLoad(pct) {
+    loadBar.style.width = pct + '%';
+    loadBar.className = 'load-meter-fill';
+    if (pct > 80) loadBar.classList.add('danger');
+    else if (pct > 50) loadBar.classList.add('warning');
+    statDbLoad.textContent = pct + '%';
+  }
+
+  function clearParticles() {
+    particles.forEach(function(p) { p.remove(); });
+    particles = [];
+  }
+
+  function createParticle(x, y, targetY, color, delay) {
+    var circle = document.createElementNS('http://www.w3.org/2000/svg', 'circle');
+    circle.setAttribute('cx', x);
+    circle.setAttribute('cy', y);
+    circle.setAttribute('r', '4');
+    circle.setAttribute('fill', color);
+    circle.setAttribute('opacity', '0');
+    svg.appendChild(circle);
+    particles.push(circle);
+    setTimeout(function() {
+      circle.setAttribute('opacity', '0.8');
+      circle.style.transition = 'cy 0.6s ease, opacity 0.3s ease';
+      setTimeout(function() { circle.setAttribute('cy', targetY); }, 50);
+    }, delay);
+    return circle;
+  }
+
+  function resetSim() {
+    if (animTimer) clearTimeout(animTimer);
+    clearParticles();
+    cacheNode.className = 'svg-node';
+    dbNode.className = 'svg-node';
+    lockIcon.style.display = 'none';
+    setDbLoad(10);
+    statRequests.textContent = '0';
+    statCache.textContent = 'HIT';
+    statCache.className = 'stat-value orange';
+    ttlText.textContent = 'TTL: 5s';
+    ttlText.setAttribute('fill', '#d29922');
+    btnStampede.classList.remove('done');
+    btnMutex.classList.remove('done');
+  }
+
+  function runStampede() {
+    resetSim();
+    btnStampede.classList.add('done');
+    var ttl = 5;
+
+    function countdown() {
+      if (ttl <= 0) {
+        ttlText.textContent = 'TTL: EXPIRED';
+        ttlText.setAttribute('fill', '#f85149');
+        cacheNode.className = 'svg-node miss';
+        statCache.textContent = 'MISS';
+        statCache.className = 'stat-value red';
+
+        var count = 20;
+        statRequests.textContent = count;
+        for (var i = 0; i < count; i++) {
+          var xOff = 280 + Math.random() * 140;
+          createParticle(xOff, 40, 210, '#f85149', i * 60);
+        }
+        setTimeout(function() {
+          dbNode.className = 'svg-node overloaded';
+          setDbLoad(98);
+        }, 800);
+        return;
+      }
+      ttlText.textContent = 'TTL: ' + ttl + 's';
+      ttl--;
+      animTimer = setTimeout(countdown, 600);
+    }
+    countdown();
+  }
+
+  function runMutex() {
+    resetSim();
+    btnMutex.classList.add('done');
+    var ttl = 5;
+
+    function countdown() {
+      if (ttl <= 0) {
+        ttlText.textContent = 'TTL: EXPIRED';
+        ttlText.setAttribute('fill', '#d29922');
+        cacheNode.className = 'svg-node miss';
+        statCache.textContent = 'MISS';
+        statCache.className = 'stat-value orange';
+        lockIcon.style.display = 'block';
+
+        statRequests.textContent = '20';
+        createParticle(350, 40, 210, '#3fb950', 200);
+        for (var i = 0; i < 19; i++) {
+          var xOff = 290 + Math.random() * 120;
+          createParticle(xOff, 40, 140, '#58a6ff', i * 40);
+        }
+        setTimeout(function() {
+          setDbLoad(25);
+          dbNode.className = 'svg-node active';
+        }, 600);
+        setTimeout(function() {
+          lockIcon.style.display = 'none';
+          cacheNode.className = 'svg-node hit';
+          statCache.textContent = 'REBUILT';
+          statCache.className = 'stat-value green';
+          setDbLoad(10);
+          dbNode.className = 'svg-node';
+        }, 2500);
+        return;
+      }
+      ttlText.textContent = 'TTL: ' + ttl + 's';
+      ttl--;
+      animTimer = setTimeout(countdown, 600);
+    }
+    countdown();
+  }
+
+  btnStampede.addEventListener('click', runStampede);
+  btnMutex.addEventListener('click', runMutex);
+  btnReset.addEventListener('click', resetSim);
+
+  // Questions
+  var q1Answered = false;
+  document.querySelectorAll('#q1 .question-option').forEach(function(opt) {
+    opt.addEventListener('click', function() {
+      if (q1Answered) return;
+      var isCorrect = this.dataset.answer === 'correct';
+      if (isCorrect) {
+        q1Answered = true;
+        this.classList.add('correct');
+        var fb = document.getElementById('q1-feedback');
+        fb.textContent = '正確！Mutex 鎖確保只有一個請求重建快取，其餘等待。';
+        fb.className = 'question-feedback visible correct';
+        var self = this;
+        document.querySelectorAll('#q1 .question-option').forEach(function(o) {
+          if (o !== self) o.classList.add('disabled');
+        });
+        setTimeout(function() {
+          document.querySelector('.k11-insight').classList.add('visible');
+        }, 600);
+      } else {
+        this.classList.add('incorrect');
+        var fb = document.getElementById('q1-feedback');
+        fb.textContent = '不正確。增加資源無法解決根本的並發問題。';
+        fb.className = 'question-feedback visible incorrect';
+        setTimeout(function() {
+          fb.classList.remove('visible');
+          setTimeout(function() { fb.classList.remove('incorrect'); }, 300);
+        }, 2000);
+      }
+    });
+  });
+})();
+</script>
+
+</body>
+</html>
